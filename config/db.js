@@ -7,6 +7,7 @@ const connectToDb = () => {
       console.log(`Database connected with ${data.connection.host}`)
     )
     .catch((error) => {
+      console.log(process.env.DB_URI);
       console.error('Database connection error:', error.message);
       process.exit(1);
     });
