@@ -10,8 +10,8 @@ const cookieParser = require('cookie-parser');
 const app = express();
 
 // requiring routers
-
 const adminRouter = require('./routes/adminRouter');
+const studentRouter = require('./routes/studentRouter');
 
 // requiring middlewares
 const errorMiddleware = require('./middleware/Error');
@@ -54,7 +54,7 @@ app.get('/', (req, res) => {
 
 // using routers
 app.use('/api/admin', adminRouter);
-
+app.use('/api/student', studentRouter);
 
 // using other middlewares
 app.use(errorMiddleware);
