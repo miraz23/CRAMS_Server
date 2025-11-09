@@ -20,6 +20,9 @@ router.route('/logout')
 
 // get single student details
 router.route('/:id')
-  .get(studentController.getSingleStudentDetails);
+  .get(studentController.getSingleStudentDetails)
+  .put(studentController.updateStudent)
+  .delete(studentController.deleteStudent);
 
 module.exports = router;
+

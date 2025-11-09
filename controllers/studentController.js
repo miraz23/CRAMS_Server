@@ -111,3 +111,57 @@ exports.getSingleStudentDetails = catchAsyncError(async (req, res, next) => {
     },
   });
 });
+
+exports.updateStudent = catchAsyncError(async (req, res, next) => {
+  const { mobileNumber, presentAddress, permanentAddress, studentImage } = req.body;
+ 
+  if (!req.params.id) {
+    return next(new ErrorHandler('Student not found', 400));
+  }
+ 
+  // Check if at least one field is provided
+  const hasUpdateFields = mobileNumber || presentAddress || permanentAddress || studentImage;
+ 
+  if (!hasUpdateFields) {
+    return next(new ErrorHandler('Invalid: no data provided', 400));
+  }
+ 
+  const student = await Student.findById(req.params.id);
+  if (!student) {
+    return next(new ErrorHandler('Student not found', 404));
+  }
+ 
+  // Update fields
+  if (mobileNumber) student.mobileNumber = mobileNumber;
+  if (presentAddress) student.presentAddress = presentAddress;
+  if (permanentAddress) student.permanentAddress = permanentAddress;
+  if (studentImage !== undefined) student.studentImage = studentImage;
+ 
+  await student.save();
+ 
+  res.status(200).json({
+    success: true,
+    message: 'Student details updated successfully',
+    data: {
+      mobileNumber: student.mobileNumber,
+      presentAddress: student.presentAddress,
+      permanentAddress: student.permanentAddress,
+      studentImage: student.studentImage,
+    },
+  });
+});
+
+exports.deleteStudent = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Student not found', 400));
+  }
+  const student = await Student.findById(req.params.id);
+  if (!student) {
+    return next(new ErrorHandler('Student not found', 404));
+  }
+  await student.deleteOne();
+  res.status(200).json({
+    success: true,
+    message: 'Student deleted',
+  });
+});
