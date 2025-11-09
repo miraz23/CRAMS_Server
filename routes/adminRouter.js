@@ -10,4 +10,8 @@ router.route('/register')
 router.route('/login')
   .post(adminController.loginAdmin);
 
+// admin logout
+router.route('/logout')
+  .post(adminController.logoutAdmin);
+
 module.exports = router;
