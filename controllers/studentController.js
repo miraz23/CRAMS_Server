@@ -1,13 +1,33 @@
 const Student = require('../models/studentModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
+const { formatDate, formatGPA } = require('../utils/helpers');
+
+exports.getAllStudentDetails = catchAsyncError(async (req, res, next) => {
+  const students = await Student.find();
+  const studentData = students.map((student) => {
+    return {
+      id: student._id,
+      name: student.name,
+      studentId: student.studentId,
+      email: student.email,
+      department: student.department
+    };
+  });
+  res.status(200).json({
+    success: true,
+    message: 'Student details fetched successfully',
+    data: studentData,
+  });
+});
 
 exports.registerStudent = catchAsyncError(async (req, res, next) => {
-  const { name, studentId, email, password, mobileNumber, department, fatherName, motherName, dateOfBirth, gender, religion, nationality, presentAddress, permanentAddress, sscBoardInstitute, sscGroup, sscPassingYear, sscGPA, hscBoardInstitute, hscGroup, hscPassingYear, hscGPA } = req.body;
-  if (!name || !studentId || !email || !password || !mobileNumber || !department || !fatherName || !motherName || !dateOfBirth || !gender || !religion || !nationality || !presentAddress || !permanentAddress || !sscBoardInstitute || !sscGroup || !sscPassingYear || !sscGPA || !hscBoardInstitute || !hscGroup || !hscPassingYear || !hscGPA) {
+  const { name, studentId, email, password, mobileNumber, department, fatherName, motherName, dateOfBirth, gender, religion, nationality, presentAddress, permanentAddress, sscBoardInstitute, sscGroup, sscPassingYear, sscGPA, hscBoardInstitute, hscGroup, hscPassingYear, hscGPA, studentImage } = req.body;
+  if (!name || !studentId || !email || !password || !mobileNumber || !department || !fatherName || !motherName || !dateOfBirth || !gender || !religion || !nationality || !presentAddress || !permanentAddress || !sscBoardInstitute || !sscGroup || !sscPassingYear || !sscGPA || !hscBoardInstitute || !hscGroup || !hscPassingYear || !hscGPA || !studentImage) {
     return next(new ErrorHandler('Missing fields', 400));
   }
-  const student = await Student.create({ name, studentId, email, password, mobileNumber, department, fatherName, motherName, dateOfBirth, gender, religion, nationality, presentAddress, permanentAddress, sscBoardInstitute, sscGroup, sscPassingYear, sscGPA, hscBoardInstitute, hscGroup, hscPassingYear, hscGPA });
+  
+  const student = await Student.create({ name, studentId, email, password, mobileNumber, department, fatherName, motherName, dateOfBirth, gender, religion, nationality, presentAddress, permanentAddress, sscBoardInstitute, sscGroup, sscPassingYear, sscGPA, hscBoardInstitute, hscGroup, hscPassingYear, hscGPA, studentImage });
   
   res.status(200).json({
     success: true,
@@ -18,6 +38,43 @@ exports.registerStudent = catchAsyncError(async (req, res, next) => {
       studentId: student.studentId,
       email: student.email,
       department: student.department
+    },
+  });
+});
+
+exports.getSingleStudentDetails = catchAsyncError(async (req, res, next) => {
+  const student = await Student.findById(req.params.id);
+  if (!student) {
+    return next(new ErrorHandler('Student not found', 404));
+  }
+  
+  res.status(200).json({
+    success: true,
+    message: 'Student details fetched successfully',
+    data: {
+      id: student._id,
+      name: student.name,
+      studentId: student.studentId,
+      email: student.email,
+      mobileNumber: student.mobileNumber,
+      department: student.department,
+      fatherName: student.fatherName,
+      motherName: student.motherName,
+      dateOfBirth: formatDate(student.dateOfBirth),
+      gender: student.gender,
+      religion: student.religion,
+      nationality: student.nationality,
+      presentAddress: student.presentAddress,
+      permanentAddress: student.permanentAddress,
+      sscBoardInstitute: student.sscBoardInstitute,
+      sscGroup: student.sscGroup,
+      sscPassingYear: student.sscPassingYear,
+      sscGPA: formatGPA(student.sscGPA),
+      hscBoardInstitute: student.hscBoardInstitute,
+      hscGroup: student.hscGroup,
+      hscPassingYear: student.hscPassingYear,
+      hscGPA: formatGPA(student.hscGPA),
+      studentImage: student.studentImage,
     },
   });
 });
