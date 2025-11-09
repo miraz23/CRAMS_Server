@@ -1,7 +1,26 @@
 const Admin = require('../models/adminModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
+const jwt = require('jsonwebtoken');
 
+exports.getAllAdminDetails = catchAsyncError(async (req, res, next) => {
+  const admin = await Admin.find();
+  
+  const adminData = admin.map((item) => {
+    return {
+      id: item._id,
+      name: item.name,
+      email: item.email,
+      privilege: item.privilege,
+    };
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Admin details fetched successfully',
+    data: adminData,
+  });
+});
 
 exports.registerAdmin = catchAsyncError(async (req, res, next) => {
   const { name, email, password, privilege } = req.body;
@@ -11,10 +30,9 @@ exports.registerAdmin = catchAsyncError(async (req, res, next) => {
 
   // Check if this is the first admin
   const adminCount = await Admin.countDocuments();
-  const isSuperAdmin = adminCount === 0;
-
-  // If it's the first admin, automatically set privilege to 'super'
-  const adminPrivilege = isSuperAdmin ? 'super' : (privilege || 'low');
+  const isFirstAdmin = adminCount === 0;
+  // If it's the first admin, automatically set privilege to 'Super Admin'
+  const adminPrivilege = isFirstAdmin ? 'Super Admin' : (privilege || 'Admin');
 
   const admin = await Admin.create({
     name,
@@ -25,7 +43,7 @@ exports.registerAdmin = catchAsyncError(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: isSuperAdmin ? 'Super admin created successfully' : 'Admin created successfully',
+    message: isFirstAdmin ? 'Super Admin created successfully' : 'Admin created successfully',
     data: {
       id: admin._id,
       name: admin.name,
@@ -54,6 +72,15 @@ exports.loginAdmin = catchAsyncError(async(req, res, next) => {
   }
 
   const token = admin.getJwtToken();
+  // Set token in cookie
+  const cookieExpire = process.env.COOKIE_EXPIRE;
+  const options = {
+    expires: new Date(Date.now() + cookieExpire * 24 * 60 * 60 * 1000),
+    httpOnly: true,
+  };
+  
+  res.cookie('token', token, options);
+  
   res.status(200).json({
     success: true,
     message: 'Admin logged in successfully',
@@ -74,3 +101,23 @@ exports.logoutAdmin = catchAsyncError(async(req, res, next) => {
   });
 })
 
+exports.getSingleAdminDetails = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('User not found', 400));
+  }
+  const admin = await Admin.findById(req.params.id);
+  if (!admin) {
+    return next(new ErrorHandler('User not found', 200));
+  }
+  const adminData = {
+    id: admin._id,
+    name: admin.name,
+    email: admin.email,
+    privilege: admin.privilege,
+  };
+  res.status(200).json({
+    success: true,
+    message: 'Admin details fetched successfully',
+    data: adminData,
+  });
+});

@@ -1,6 +1,14 @@
 const router = require('express').Router();
 const adminController = require('../controllers/adminController');
+const auth = require('../middleware/Auth');
 
+// get all admin details
+router.route('/')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    adminController.getAllAdminDetails
+  );
 
 // register admin
 router.route('/register')
@@ -13,5 +21,13 @@ router.route('/login')
 // admin logout
 router.route('/logout')
   .post(adminController.logoutAdmin);
+
+// get single admin details
+router.route('/:id')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    adminController.getSingleAdminDetails
+  )
 
 module.exports = router;
