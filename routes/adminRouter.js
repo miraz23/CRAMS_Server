@@ -2,8 +2,12 @@ const router = require('express').Router();
 const adminController = require('../controllers/adminController');
 
 
-// register first admin (no authentication required)
-router.route('/register-superadmin')
+// register admin
+router.route('/register')
   .post(adminController.registerAdmin);
 
-  module.exports = router;
+// admin login
+router.route('/login')
+  .post(adminController.loginAdmin);
+
+module.exports = router;

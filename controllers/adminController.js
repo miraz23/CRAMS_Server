@@ -9,12 +9,12 @@ exports.registerAdmin = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Missing fields', 400));
   }
 
-  // Check if this is the first admin (no admins exist in database)
+  // Check if this is the first admin
   const adminCount = await Admin.countDocuments();
-  const isFirstAdmin = adminCount === 0;
+  const isSuperAdmin = adminCount === 0;
 
   // If it's the first admin, automatically set privilege to 'super'
-  const adminPrivilege = isFirstAdmin ? 'super' : (privilege || 'low');
+  const adminPrivilege = isSuperAdmin ? 'super' : (privilege || 'low');
 
   const admin = await Admin.create({
     name,
@@ -25,7 +25,7 @@ exports.registerAdmin = catchAsyncError(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: isFirstAdmin ? 'First admin created successfully' : 'Admin created successfully',
+    message: isSuperAdmin ? 'Super admin created successfully' : 'Admin created successfully',
     data: {
       id: admin._id,
       name: admin.name,
@@ -35,6 +35,32 @@ exports.registerAdmin = catchAsyncError(async (req, res, next) => {
   });
 });
 
+exports.loginAdmin = catchAsyncError(async(req, res, next) => {
+  const { email, password } = req.body;
 
+  if(!email || !password){
+    return next(new ErrorHandler('Missing fields', 400));
+  }
+
+  // Find an admin by email and explicitly include the password field in the query result
+  const admin = await Admin.findOne({ email }).select('+password');
+  if(!admin){
+    return next(new ErrorHandler('Invalid email or password', 401));
+  }
+
+  const isPasswordCorrect = await admin.comparePassword(password);
+  if(!isPasswordCorrect){
+    return next(new ErrorHandler('Invalid email or password', 401));
+  }
+
+  const token = admin.getJwtToken();
+  res.status(200).json({
+    success: true,
+    message: 'Admin logged in successfully',
+    data: {
+      token,
+    },
+  });
+})
 
 

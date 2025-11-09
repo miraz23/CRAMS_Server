@@ -53,8 +53,6 @@ app.get('/', (req, res) => {
 });
 
 // using routers
-
-
 app.use('/api/admin', adminRouter);
 
 
