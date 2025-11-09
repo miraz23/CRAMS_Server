@@ -29,5 +29,15 @@ router.route('/:id')
     auth.checkAdminPrivileges('Super Admin'),
     adminController.getSingleAdminDetails
   )
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    adminController.updateAdminPrivilege
+  )
+  .delete(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    adminController.deleteAdmin
+  );
 
 module.exports = router;
