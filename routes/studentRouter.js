@@ -10,6 +10,14 @@ router.route('/')
 router.route('/register')
   .post(studentController.registerStudent);
 
+// student login
+router.route('/login')
+  .post(studentController.loginStudent);
+
+// student logout
+router.route('/logout')
+  .post(studentController.logoutStudent);
+
 // get single student details
 router.route('/:id')
   .get(studentController.getSingleStudentDetails);

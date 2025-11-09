@@ -2,6 +2,7 @@ const Student = require('../models/studentModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { formatDate, formatGPA } = require('../utils/helpers');
+const { sendToken } = require('../utils/jwt');
 
 exports.getAllStudentDetails = catchAsyncError(async (req, res, next) => {
   const students = await Student.find();
@@ -40,7 +41,39 @@ exports.registerStudent = catchAsyncError(async (req, res, next) => {
       department: student.department
     },
   });
-});
+}); 
+
+exports.loginStudent = catchAsyncError(async(req, res, next) => {
+  const { studentId, password } = req.body;
+
+  if(!studentId || !password){
+    return next(new ErrorHandler('Missing fields', 400));
+  }
+
+  // Find a student by studentId and explicitly include the password field in the query result
+  const student = await Student.findOne({ studentId }).select('+password');
+  if(!student){
+    return next(new ErrorHandler('Invalid student ID or password', 401));
+  }
+
+  const isPasswordCorrect = await student.comparePassword(password);
+  if(!isPasswordCorrect){
+    return next(new ErrorHandler('Invalid student ID or password', 401));
+  }
+
+  sendToken(student, 200, res);
+})
+
+exports.logoutStudent = catchAsyncError(async(req, res, next) => {
+  res.cookie('token', null, {
+    expires: new Date(Date.now()),
+    httpOnly: true,
+  });
+  res.status(200).json({
+    success: true,
+    message: 'Student logged out successfully',
+  });
+})
 
 exports.getSingleStudentDetails = catchAsyncError(async (req, res, next) => {
   const student = await Student.findById(req.params.id);
