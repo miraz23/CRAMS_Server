@@ -50,6 +50,10 @@ const teacherSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
+    privilege: {
+        type: String,
+        default: 'Teacher'
+    },
     password: {
         type: String,
         required: [true, 'Please provide a password'],

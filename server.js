@@ -1,26 +1,10 @@
-// load env-vars
 require('dotenv').config();
-
-// requiring dependencies
+const connectToDb = require('./config/db');
+const cloudinary = require('./config/cloudinary');
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-
-// initialize express
 const app = express();
-
-// requiring routers
-const adminRouter = require('./routes/adminRouter');
-const studentRouter = require('./routes/studentRouter');
-
-// requiring middlewares
-const errorMiddleware = require('./middleware/Error');
-
-// require db configs
-const connectToDb = require('./config/db');
-
-// require cloudinary configs
-const cloudinary = require('./config/cloudinary');
 
 // uncaught exception
 process.on('uncaughtException', (err) => {
@@ -52,11 +36,17 @@ app.get('/', (req, res) => {
   });
 });
 
+// requiring routers
+const adminRouter = require('./routes/adminRouter');
+const studentRouter = require('./routes/studentRouter');
+const teacherRouter = require('./routes/teacherRouter');
+
 // using routers
 app.use('/api/admin', adminRouter);
 app.use('/api/student', studentRouter);
+app.use('/api/teacher', teacherRouter);
 
-// using other middlewares
+const errorMiddleware = require('./middleware/Error');
 app.use(errorMiddleware);
 
 // starting server
