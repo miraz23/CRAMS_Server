@@ -43,3 +43,35 @@ exports.registerTeacher = catchAsyncError(async (req, res, next) => {
     },
   });
 });
+
+exports.loginTeacher = catchAsyncError(async(req, res, next) => {
+  const { teacherId, password } = req.body;
+
+  if(!teacherId || !password){
+    return next(new ErrorHandler('Missing fields', 400));
+  }
+
+  // Find a teacher by teacherId and explicitly include the password field in the query result
+  const teacher = await Teacher.findOne({ teacherId }).select('+password');
+  if(!teacher){
+    return next(new ErrorHandler('Invalid teacher ID or password', 401));
+  }
+
+  const isPasswordCorrect = await teacher.comparePassword(password);
+  if(!isPasswordCorrect){
+    return next(new ErrorHandler('Invalid teacher ID or password', 401));
+  }
+
+  sendToken(teacher, 200, res);
+})
+
+exports.logoutTeacher = catchAsyncError(async(req, res, next) => {
+  res.cookie('token', null, {
+    expires: new Date(Date.now()),
+    httpOnly: true,
+  });
+  res.status(200).json({
+    success: true,
+    message: 'Teacher logged out successfully',
+  });
+})

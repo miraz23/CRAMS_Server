@@ -9,4 +9,12 @@ router.route('/')
 router.route('/register')
     .post(teacherController.registerTeacher);
 
+// teacher login
+router.route('/login')
+  .post(teacherController.loginTeacher);
+
+// teacher logout
+router.route('/logout')
+  .post(teacherController.logoutTeacher);
+
 module.exports = router;
