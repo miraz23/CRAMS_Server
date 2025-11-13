@@ -2,6 +2,7 @@ const Teacher = require('../models/teacherModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
+const { formatDate } = require('../utils/helpers');
 
 exports.getAllTeacherDetails = catchAsyncError(async (req, res, next) => {
   const teacher = await Teacher.find();
@@ -75,3 +76,29 @@ exports.logoutTeacher = catchAsyncError(async(req, res, next) => {
     message: 'Teacher logged out successfully',
   });
 })
+
+
+exports.getSingleTeacherDetails = catchAsyncError(async (req, res, next) => {
+  const teacher = await Teacher.findById(req.params.id);
+  if (!teacher) {
+    return next(new ErrorHandler('Teacher not found', 404));
+  }
+  
+  res.status(200).json({
+    success: true,
+      message: 'Teacher details fetched successfully',
+    data: {
+      id: teacher._id,
+      name: teacher.name,
+      teacherId: teacher.teacherId,
+      email: teacher.email,
+      mobileNumber: teacher.mobileNumber,
+      department: teacher.department,
+      designation: teacher.designation,
+      dateOfBirth: formatDate(teacher.dateOfBirth),
+      gender: teacher.gender,
+      address: teacher.address,
+      teacherImage: teacher.teacherImage,
+    },
+  });
+});
