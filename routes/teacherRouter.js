@@ -19,5 +19,7 @@ router.route('/logout')
 
 router.route('/:id')
   .get(teacherController.getSingleTeacherDetails)
+  .put(teacherController.updateTeacher)
+  .delete(teacherController.deleteTeacher);
 
 module.exports = router;

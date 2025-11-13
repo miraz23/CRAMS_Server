@@ -102,3 +102,51 @@ exports.getSingleTeacherDetails = catchAsyncError(async (req, res, next) => {
     },
   });
 });
+
+
+exports.updateTeacher = catchAsyncError(async (req, res, next) => {
+  const { mobileNumber, address, teacherImage } = req.body;
+ 
+  if (!req.params.id) {
+    return next(new ErrorHandler('Teacher not found', 400));
+  }
+ 
+  // Check if at least one field is provided
+  const hasUpdateFields = mobileNumber || address || teacherImage;
+ 
+  if (!hasUpdateFields) {
+    return next(new ErrorHandler('Invalid: no data provided', 400));
+  }
+ 
+  const teacher = await Teacher.findById(req.params.id);
+  if (!teacher) {
+    return next(new ErrorHandler('Teacher not found', 404));
+  }
+ 
+  // Update fields
+  if (mobileNumber) teacher.mobileNumber = mobileNumber;
+  if (address) teacher.address = address;
+  if (teacherImage !== undefined) teacher.teacherImage = teacherImage;
+ 
+  await teacher.save();
+ 
+  res.status(200).json({
+    success: true,
+    message: 'Teacher details updated successfully',
+  });
+});
+
+exports.deleteTeacher = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Teacher not found', 400));
+  }
+  const teacher = await Teacher.findById(req.params.id);
+  if (!teacher) {
+    return next(new ErrorHandler('Teacher not found', 404));
+  }
+  await teacher.deleteOne();
+  res.status(200).json({
+    success: true,
+    message: 'Teacher deleted',
+  });
+});

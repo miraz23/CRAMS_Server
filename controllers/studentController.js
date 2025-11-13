@@ -141,13 +141,7 @@ exports.updateStudent = catchAsyncError(async (req, res, next) => {
  
   res.status(200).json({
     success: true,
-    message: 'Student details updated successfully',
-    data: {
-      mobileNumber: student.mobileNumber,
-      presentAddress: student.presentAddress,
-      permanentAddress: student.permanentAddress,
-      studentImage: student.studentImage,
-    },
+    message: 'Student details updated successfully',    
   });
 });
 
