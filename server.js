@@ -40,11 +40,13 @@ app.get('/', (req, res) => {
 const adminRouter = require('./routes/adminRouter');
 const studentRouter = require('./routes/studentRouter');
 const teacherRouter = require('./routes/teacherRouter');
+const staffRouter = require('./routes/staffRouter');
 
 // using routers
 app.use('/api/admin', adminRouter);
 app.use('/api/student', studentRouter);
 app.use('/api/teacher', teacherRouter);
+app.use('/api/staff', staffRouter);
 
 const errorMiddleware = require('./middleware/Error');
 app.use(errorMiddleware);

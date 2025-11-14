@@ -16,6 +16,7 @@ exports.sendToken = (admin, statusCode, res) => {
     .cookie('token', token, options)
     .json({
       success: true,
+      message: 'Staff log in successful!',
       data: {
         id: admin._id,
         name: admin.name,

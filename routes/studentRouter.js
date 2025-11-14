@@ -21,6 +21,11 @@ router.route('/logout')
 // get single student details
 router.route('/:id')
   .get(studentController.getSingleStudentDetails)
+  .post(studentController.updateStudent)
+  .delete(studentController.deleteStudent);
+
+// update and delete student
+router.route('/:id')
   .put(studentController.updateStudent)
   .delete(studentController.deleteStudent);
 
