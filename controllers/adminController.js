@@ -1,10 +1,14 @@
 const Admin = require('../models/adminModel');
 const Course = require('../models/courseModel');
 const Section = require('../models/sectionModel');
+const Student = require('../models/studentModel');
+const Teacher = require('../models/teacherModel');
+const Staff = require('../models/staffModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
 const validator = require('validator');
+const { formatDate, formatGPA } = require('../utils/helpers');
 
 exports.getAllAdminDetails = catchAsyncError(async (req, res, next) => {
   const admin = await Admin.find();
@@ -735,5 +739,191 @@ exports.deleteSection = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Section deleted successfully',
+  });
+});
+
+const serializeStudent = (student) => ({
+  id: student._id,
+  name: student.name,
+  studentId: student.studentId,
+  email: student.email,
+  mobileNumber: student.mobileNumber,
+  department: student.department,
+  fatherName: student.fatherName,
+  motherName: student.motherName,
+  dateOfBirth: formatDate(student.dateOfBirth),
+  gender: student.gender,
+  religion: student.religion,
+  nationality: student.nationality,
+  presentAddress: student.presentAddress,
+  permanentAddress: student.permanentAddress,
+  sscBoardInstitute: student.sscBoardInstitute,
+  sscGroup: student.sscGroup,
+  sscPassingYear: student.sscPassingYear,
+  sscGPA: formatGPA(student.sscGPA),
+  hscBoardInstitute: student.hscBoardInstitute,
+  hscGroup: student.hscGroup,
+  hscPassingYear: student.hscPassingYear,
+  hscGPA: formatGPA(student.hscGPA),
+  studentImage: student.studentImage,
+});
+
+const serializeTeacher = (teacher) => ({
+  id: teacher._id,
+  name: teacher.name,
+  teacherId: teacher.teacherId,
+  email: teacher.email,
+  mobileNumber: teacher.mobileNumber,
+  department: teacher.department,
+  designation: teacher.designation,
+  dateOfBirth: formatDate(teacher.dateOfBirth),
+  gender: teacher.gender,
+  address: teacher.address,
+  teacherImage: teacher.teacherImage,
+});
+
+const serializeStaff = (staff) => ({
+  id: staff._id,
+  name: staff.name,
+  staffId: staff.staffId,
+  email: staff.email,
+  mobileNumber: staff.mobileNumber,
+  department: staff.department,
+  designation: staff.designation,
+  dateOfBirth: formatDate(staff.dateOfBirth),
+  gender: staff.gender,
+  address: staff.address,
+  staffImage: staff.staffImage,
+});
+
+const applyUpdates = (document, updates) => {
+  Object.entries(updates).forEach(([key, value]) => {
+    if (['_id', '__v'].includes(key)) {
+      return;
+    }
+    document[key] = value;
+  });
+};
+
+// User Management
+exports.getUserManagementOverview = catchAsyncError(async (req, res) => {
+  const [students, teachers, staffs] = await Promise.all([
+    Student.find(),
+    Teacher.find(),
+    Staff.find(),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    message: 'User management overview fetched successfully',
+    data: {
+      totals: {
+        totalStudents: students.length,
+        totalTeachers: teachers.length,
+        totalStaffs: staffs.length,
+      },
+      students: students.map(serializeStudent),
+      teachers: teachers.map(serializeTeacher),
+      staffs: staffs.map(serializeStaff),
+    },
+  });
+});
+
+exports.getAllStudentsForAdmin = catchAsyncError(async (req, res) => {
+  const students = await Student.find();
+  res.status(200).json({
+    success: true,
+    message: 'All student details fetched successfully',
+    data: students.map(serializeStudent),
+  });
+});
+
+exports.getAllTeachersForAdmin = catchAsyncError(async (req, res) => {
+  const teachers = await Teacher.find();
+  res.status(200).json({
+    success: true,
+    message: 'All teacher details fetched successfully',
+    data: teachers.map(serializeTeacher),
+  });
+});
+
+exports.getAllStaffsForAdmin = catchAsyncError(async (req, res) => {
+  const staffs = await Staff.find();
+  res.status(200).json({
+    success: true,
+    message: 'All staff details fetched successfully',
+    data: staffs.map(serializeStaff),
+  });
+});
+
+exports.updateStudentByAdmin = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Student not found', 400));
+  }
+
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new ErrorHandler('Invalid: no data provided', 400));
+  }
+
+  const student = await Student.findById(req.params.id).select('+password');
+  if (!student) {
+    return next(new ErrorHandler('Student not found', 404));
+  }
+
+  applyUpdates(student, req.body);
+  await student.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Student record updated successfully',
+    data: serializeStudent(student),
+  });
+});
+
+exports.updateTeacherByAdmin = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Teacher not found', 400));
+  }
+
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new ErrorHandler('Invalid: no data provided', 400));
+  }
+
+  const teacher = await Teacher.findById(req.params.id).select('+password');
+  if (!teacher) {
+    return next(new ErrorHandler('Teacher not found', 404));
+  }
+
+  applyUpdates(teacher, req.body);
+  await teacher.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Teacher record updated successfully',
+    data: serializeTeacher(teacher),
+  });
+});
+
+exports.updateStaffByAdmin = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Staff not found', 400));
+  }
+
+  if (!req.body || Object.keys(req.body).length === 0) {
+    return next(new ErrorHandler('Invalid: no data provided', 400));
+  }
+
+  const staff = await Staff.findById(req.params.id).select('+password');
+  if (!staff) {
+    return next(new ErrorHandler('Staff not found', 404));
+  }
+
+  applyUpdates(staff, req.body);
+  await staff.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Staff record updated successfully',
+    data: serializeStaff(staff),
   });
 });

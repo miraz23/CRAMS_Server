@@ -84,6 +84,56 @@ router.route('/sections/:id')
     adminController.deleteSection
   );
 
+// User Management (Admin Dashboard)
+router.route('/user-management/overview')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getUserManagementOverview
+  );
+
+router.route('/user-management/students')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getAllStudentsForAdmin
+  );
+
+router.route('/user-management/teachers')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getAllTeachersForAdmin
+  );
+
+router.route('/user-management/staff')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getAllStaffsForAdmin
+  );
+
+router.route('/user-management/students/:id')
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.updateStudentByAdmin
+  );
+
+router.route('/user-management/teachers/:id')
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.updateTeacherByAdmin
+  );
+
+router.route('/user-management/staff/:id')
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.updateStaffByAdmin
+  );
+
 // get single admin details
 router.route('/:id')
   .get(
