@@ -22,6 +22,38 @@ router.route('/login')
 router.route('/logout')
   .post(adminController.logoutAdmin);
 
+// Course Management Routes
+// Add new course
+router.route('/courses')
+  .post(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.addCourse
+  )
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getCourses
+  );
+
+// Get, update, or delete single course
+router.route('/courses/:id')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getSingleCourse
+  )
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.updateCourse
+  )
+  .delete(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.deleteCourse
+  );
+
 // get single admin details
 router.route('/:id')
   .get(

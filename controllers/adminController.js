@@ -1,4 +1,5 @@
 const Admin = require('../models/adminModel');
+const Course = require('../models/courseModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
@@ -179,5 +180,288 @@ exports.deleteAdmin = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Admin deleted',
+  });
+});
+
+// Add a new course
+exports.addCourse = catchAsyncError(async (req, res, next) => {
+  const { courseCode, courseName, credits, department, prerequisite, regularSeats, irregularSeats, semester } = req.body;
+
+  // Validate required fields
+  if (!courseCode || !courseName || !credits || !department || regularSeats === undefined || irregularSeats === undefined || !semester) {
+    return next(new ErrorHandler('Missing required fields', 400));
+  }
+
+  // Check if course code already exists
+  const existingCourse = await Course.findOne({ courseCode: courseCode.toUpperCase() });
+  if (existingCourse) {
+    return next(new ErrorHandler('Course code already exists', 400));
+  }
+
+  // Create new course
+  const course = await Course.create({
+    courseCode: courseCode.toUpperCase(),
+    courseName,
+    credits: Number(credits),
+    department,
+    prerequisite: prerequisite || '',
+    regularSeats: Number(regularSeats),
+    irregularSeats: Number(irregularSeats),
+    availableSeats: Number(regularSeats) + Number(irregularSeats),
+    semester,
+    status: 'active',
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Course added successfully',
+    data: {
+      id: course._id,
+      courseCode: course.courseCode,
+      courseName: course.courseName,
+      credits: course.credits,
+      department: course.department,
+      prerequisite: course.prerequisite,
+      regularSeats: course.regularSeats,
+      irregularSeats: course.irregularSeats,
+      availableSeats: course.availableSeats,
+      semester: course.semester,
+      status: course.status,
+    },
+  });
+});
+
+// Get all courses with optional search and filter
+exports.getCourses = catchAsyncError(async (req, res, next) => {
+  const { search, department, status } = req.query;
+
+  // Build query
+  const query = {};
+
+  // Search by course code or name
+  if (search) {
+    query.$or = [
+      { courseCode: { $regex: search, $options: 'i' } },
+      { courseName: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  // Filter by department
+  if (department && department !== 'All Departments') {
+    query.department = department;
+  }
+
+  // Filter by status
+  if (status) {
+    query.status = status;
+  }
+
+  const courses = await Course.find(query).sort({ createdAt: -1 });
+
+  // Calculate statistics
+  const totalCourses = await Course.countDocuments();
+  const activeCourses = await Course.countDocuments({ status: 'active' });
+  const totalSeats = await Course.aggregate([
+    { 
+      $group: { 
+        _id: null, 
+        total: { 
+          $sum: { 
+            $add: ['$regularSeats', '$irregularSeats'] 
+          } 
+        } 
+      } 
+    },
+  ]);
+  const availableSeats = await Course.aggregate([
+    { $group: { _id: null, total: { $sum: '$availableSeats' } } },
+  ]);
+
+  const courseData = courses.map((course) => ({
+    id: course._id,
+    courseCode: course.courseCode,
+    courseName: course.courseName,
+    credits: course.credits,
+    department: course.department,
+    prerequisite: course.prerequisite,
+    regularSeats: course.regularSeats,
+    irregularSeats: course.irregularSeats,
+    availableSeats: course.availableSeats,
+    semester: course.semester,
+    status: course.status,
+  }));
+
+  res.status(200).json({
+    success: true,
+    message: 'Courses fetched successfully',
+    data: courseData,
+    statistics: {
+      totalCourses,
+      activeCourses,
+      totalSeats: totalSeats[0]?.total || 0,
+      availableSeats: availableSeats[0]?.total || 0,
+    },
+  });
+});
+
+// Get single course by ID
+exports.getSingleCourse = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Course ID is required', 400));
+  }
+
+  const course = await Course.findById(req.params.id);
+  if (!course) {
+    return next(new ErrorHandler('Course not found', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Course fetched successfully',
+    data: {
+      id: course._id,
+      courseCode: course.courseCode,
+      courseName: course.courseName,
+      credits: course.credits,
+      department: course.department,
+      prerequisite: course.prerequisite,
+      regularSeats: course.regularSeats,
+      irregularSeats: course.irregularSeats,
+      availableSeats: course.availableSeats,
+      semester: course.semester,
+      status: course.status,
+    },
+  });
+});
+
+// Update course
+exports.updateCourse = catchAsyncError(async (req, res, next) => {
+  const { id } = req.params;
+  if (!id) {
+    return next(new ErrorHandler('Course ID is required', 400));
+  }
+
+  const {
+    courseCode,
+    courseName,
+    credits,
+    department,
+    prerequisite,
+    regularSeats,
+    irregularSeats,
+    semester,
+    status,
+  } = req.body;
+
+  const fieldsProvided = [
+    courseCode,
+    courseName,
+    credits,
+    department,
+    prerequisite,
+    regularSeats,
+    irregularSeats,
+    semester,
+    status,
+  ].some((field) => field !== undefined);
+
+  if (!fieldsProvided) {
+    return next(new ErrorHandler('No fields provided to update', 400));
+  }
+
+  const course = await Course.findById(id);
+  if (!course) {
+    return next(new ErrorHandler('Course not found', 404));
+  }
+
+  if (courseCode) {
+    const formattedCode = courseCode.toUpperCase().trim();
+    const existingCourse = await Course.findOne({
+      courseCode: formattedCode,
+      _id: { $ne: id },
+    });
+    if (existingCourse) {
+      return next(new ErrorHandler('Course code already exists', 400));
+    }
+    course.courseCode = formattedCode;
+  }
+
+  if (courseName) {
+    course.courseName = courseName;
+  }
+
+  if (credits !== undefined) {
+    const creditsValue = Number(credits);
+    if (Number.isNaN(creditsValue)) {
+      return next(new ErrorHandler('Invalid credits value', 400));
+    }
+    course.credits = creditsValue;
+  }
+
+  if (department) {
+    course.department = department;
+  }
+
+  if (prerequisite !== undefined) {
+    course.prerequisite = prerequisite;
+  }
+
+  if (regularSeats !== undefined) {
+    const regularSeatsValue = Number(regularSeats);
+    if (Number.isNaN(regularSeatsValue)) {
+      return next(new ErrorHandler('Invalid regularSeats value', 400));
+    }
+    course.regularSeats = regularSeatsValue;
+  }
+
+  if (irregularSeats !== undefined) {
+    const irregularSeatsValue = Number(irregularSeats);
+    if (Number.isNaN(irregularSeatsValue)) {
+      return next(new ErrorHandler('Invalid irregularSeats value', 400));
+    }
+    course.irregularSeats = irregularSeatsValue;
+  }
+
+  if (semester) {
+    course.semester = semester;
+  }
+
+  if (status) {
+    const allowedStatus = ['active', 'inactive'];
+    if (!allowedStatus.includes(status)) {
+      return next(new ErrorHandler('Invalid status value', 400));
+    }
+    course.status = status;
+  }
+
+  await course.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Course updated successfully'
+  });
+});
+ 
+// Delete course
+exports.deleteCourse = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Course ID is required', 400));
+  }
+
+  const course = await Course.findById(req.params.id);
+  if (!course) {
+    return next(new ErrorHandler('Course not found', 404));
+  }
+
+  // Check if course has enrolled students
+  if (course.enrolledStudents && course.enrolledStudents.length > 0) {
+    return next(new ErrorHandler('Cannot delete course with enrolled students', 400));
+  }
+
+  await course.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: 'Course deleted successfully',
   });
 });
