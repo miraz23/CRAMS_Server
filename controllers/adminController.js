@@ -1,5 +1,6 @@
 const Admin = require('../models/adminModel');
 const Course = require('../models/courseModel');
+const Section = require('../models/sectionModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
@@ -463,5 +464,276 @@ exports.deleteCourse = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Course deleted successfully',
+  });
+});
+
+// Section Management
+exports.createSection = catchAsyncError(async (req, res, next) => {
+  const {
+    sectionName, semester, shift, assignedAdvisor, totalCapacity, enrolledStudents, crName, crContact, acrName, acrContact, status,
+  } = req.body;
+
+  const requiredFields = [
+    sectionName, semester, shift, assignedAdvisor, totalCapacity, crName, crContact, acrName, acrContact,
+  ];
+
+  if (requiredFields.some((value) => value === undefined || value === null || value === '')) {
+    return next(new ErrorHandler('Missing required section fields', 400));
+  }
+
+  const formattedSectionName = sectionName.trim().toUpperCase();
+  const capacityValue = Number(totalCapacity);
+
+  if (Number.isNaN(capacityValue) || capacityValue < 1 || capacityValue > 50) {
+    return next(new ErrorHandler('Invalid total capacity (1-50)', 400));
+  }
+
+  let enrollmentValue = enrolledStudents !== undefined ? Number(enrolledStudents) : 0;
+  if (Number.isNaN(enrollmentValue) || enrollmentValue < 0) {
+    return next(new ErrorHandler('Invalid enrolled students value', 400));
+  }
+  if (enrollmentValue > capacityValue) {
+    return next(new ErrorHandler('Enrolled students cannot exceed total capacity', 400));
+  }
+
+  const existingSection = await Section.findOne({ sectionName: formattedSectionName });
+  if (existingSection) {
+    return next(new ErrorHandler('Section name already exists', 400));
+  }
+
+  const section = await Section.create({
+    sectionName: formattedSectionName,
+    semester,
+    shift,
+    assignedAdvisor,
+    totalCapacity: capacityValue,
+    enrolledStudents: enrollmentValue,
+    crName,
+    crContact,
+    acrName,
+    acrContact,
+    status: status || 'active',
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Section created successfully',
+    data: {
+      id: section._id,
+      sectionName: section.sectionName,
+      semester: section.semester,
+      shift: section.shift,
+      assignedAdvisor: section.assignedAdvisor,
+      totalCapacity: section.totalCapacity,
+      enrolledStudents: section.enrolledStudents,
+      availableSeats: section.availableSeats,
+      crName: section.crName,
+      crContact: section.crContact,
+      acrName: section.acrName,
+      acrContact: section.acrContact,
+      status: section.status,
+    },
+  });
+});
+
+exports.getSections = catchAsyncError(async (req, res) => {
+  const { semester } = req.query;
+  const query = {};
+
+  if (semester && semester !== 'All Semesters') {
+    query.semester = semester;
+  }
+
+  const sections = await Section.find(query).sort({ createdAt: -1 });
+
+  const aggregated = await Section.aggregate([
+    { $match: Object.keys(query).length ? query : {} },
+    {
+      $group: {
+        _id: null,
+        totalCapacity: { $sum: '$totalCapacity' },
+        enrolledStudents: { $sum: '$enrolledStudents' },
+        availableSeats: { $sum: '$availableSeats' },
+      },
+    },
+  ]);
+
+  const stats = aggregated[0] || {
+    totalCapacity: 0,
+    enrolledStudents: 0,
+    availableSeats: 0,
+  };
+
+  const sectionData = sections.map((section) => ({
+    id: section._id,
+    sectionName: section.sectionName,
+    semester: section.semester,
+    shift: section.shift,
+    assignedAdvisor: section.assignedAdvisor,
+    totalCapacity: section.totalCapacity,
+    enrolledStudents: section.enrolledStudents,
+    availableSeats: section.availableSeats,
+    crName: section.crName,
+    crContact: section.crContact,
+    acrName: section.acrName,
+    acrContact: section.acrContact,
+    status: section.status,
+    createdAt: section.createdAt,
+  }));
+
+  res.status(200).json({
+    success: true,
+    message: 'Sections fetched successfully',
+    data: sectionData,
+    statistics: {
+      totalSections: sectionData.length,
+      totalCapacity: stats.totalCapacity,
+      enrolledStudents: stats.enrolledStudents,
+      availableSeats: stats.availableSeats,
+    },
+  });
+});
+
+exports.getSingleSection = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Section ID is required', 400));
+  }
+
+  const section = await Section.findById(req.params.id);
+  if (!section) {
+    return next(new ErrorHandler('Section not found', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: 'Section fetched successfully',
+    data: {
+      id: section._id,
+      sectionName: section.sectionName,
+      semester: section.semester,
+      shift: section.shift,
+      assignedAdvisor: section.assignedAdvisor,
+      totalCapacity: section.totalCapacity,
+      enrolledStudents: section.enrolledStudents,
+      availableSeats: section.availableSeats,
+      crName: section.crName,
+      crContact: section.crContact,
+      acrName: section.acrName,
+      acrContact: section.acrContact,
+      status: section.status,
+      createdAt: section.createdAt,
+    },
+  });
+});
+
+exports.updateSection = catchAsyncError(async (req, res, next) => {
+  const { id } = req.params;
+  if (!id) {
+    return next(new ErrorHandler('Section ID is required', 400));
+  }
+
+  const {
+    sectionName,
+    semester,
+    shift,
+    assignedAdvisor,
+    totalCapacity,
+    enrolledStudents,
+    crName,
+    crContact,
+    acrName,
+    acrContact,
+    status,
+  } = req.body;
+
+  const fields = [
+    sectionName,
+    semester,
+    shift,
+    assignedAdvisor,
+    totalCapacity,
+    enrolledStudents,
+    crName,
+    crContact,
+    acrName,
+    acrContact,
+    status,
+  ];
+
+  if (fields.every((value) => value === undefined)) {
+    return next(new ErrorHandler('No fields provided to update', 400));
+  }
+
+  const section = await Section.findById(id);
+  if (!section) {
+    return next(new ErrorHandler('Section not found', 404));
+  }
+
+  if (sectionName) {
+    const formattedSectionName = sectionName.trim().toUpperCase();
+    const existingSection = await Section.findOne({
+      sectionName: formattedSectionName,
+      _id: { $ne: id },
+    });
+    if (existingSection) {
+      return next(new ErrorHandler('Section name already exists', 400));
+    }
+    section.sectionName = formattedSectionName;
+  }
+
+  if (semester) section.semester = semester;
+  if (shift) section.shift = shift;
+  if (assignedAdvisor) section.assignedAdvisor = assignedAdvisor;
+  if (crName) section.crName = crName;
+  if (crContact) section.crContact = crContact;
+  if (acrName) section.acrName = acrName;
+  if (acrContact) section.acrContact = acrContact;
+  if (status) section.status = status;
+
+  if (totalCapacity !== undefined) {
+    const capacityValue = Number(totalCapacity);
+    if (Number.isNaN(capacityValue) || capacityValue < 1 || capacityValue > 50) {
+      return next(new ErrorHandler('Invalid total capacity (1-50)', 400));
+    }
+    if (section.enrolledStudents > capacityValue) {
+      return next(new ErrorHandler('Enrolled students exceed new capacity', 400));
+    }
+    section.totalCapacity = capacityValue;
+  }
+
+  if (enrolledStudents !== undefined) {
+    const enrollmentValue = Number(enrolledStudents);
+    if (Number.isNaN(enrollmentValue) || enrollmentValue < 0) {
+      return next(new ErrorHandler('Invalid enrolled students value', 400));
+    }
+    if (enrollmentValue > section.totalCapacity) {
+      return next(new ErrorHandler('Enrolled students cannot exceed total capacity', 400));
+    }
+    section.enrolledStudents = enrollmentValue;
+  }
+
+  await section.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Section updated successfully',
+  });
+});
+
+exports.deleteSection = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Section ID is required', 400));
+  }
+
+  const section = await Section.findById(req.params.id);
+  if (!section) {
+    return next(new ErrorHandler('Section not found', 404));
+  }
+
+  await section.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: 'Section deleted successfully',
   });
 });

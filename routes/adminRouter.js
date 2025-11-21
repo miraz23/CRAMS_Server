@@ -54,6 +54,36 @@ router.route('/courses/:id')
     adminController.deleteCourse
   );
 
+// Section Management Routes
+router.route('/sections')
+  .post(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.createSection
+  )
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getSections
+  );
+
+router.route('/sections/:id')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getSingleSection
+  )
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.updateSection
+  )
+  .delete(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.deleteSection
+  );
+
 // get single admin details
 router.route('/:id')
   .get(
