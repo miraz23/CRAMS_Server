@@ -28,6 +28,11 @@ exports.registerStudent = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Missing fields', 400));
   }
   
+  // Validate email domain for students
+  if (!email.endsWith('@ugrad.iiuc.ac.bd')) {
+    return next(new ErrorHandler('Only emails with @ugrad.iiuc.ac.bd domain are allowed for student registration', 400));
+  }
+  
   const student = await Student.create({ name, studentId, email, password, mobileNumber, department, fatherName, motherName, dateOfBirth, gender, religion, nationality, presentAddress, permanentAddress, sscBoardInstitute, sscGroup, sscPassingYear, sscGPA, hscBoardInstitute, hscGroup, hscPassingYear, hscGPA, studentImage });
   
   res.status(200).json({

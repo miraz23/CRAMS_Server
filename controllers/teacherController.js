@@ -30,6 +30,11 @@ exports.registerTeacher = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Missing fields', 400));
   }
   
+  // Validate email domain for teachers
+  if (!email.endsWith('@iiuc.ac.bd')) {
+    return next(new ErrorHandler('Only emails with @iiuc.ac.bd domain are allowed for teacher registration', 400));
+  }
+  
   const teacher = await Teacher.create({ name, teacherId, email, password, mobileNumber, department, designation, dateOfBirth, gender, address, teacherImage });
   
   res.status(200).json({
