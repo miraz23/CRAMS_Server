@@ -3,6 +3,7 @@ const ErrorHandler = require('../utils/ErrorHandler');
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/adminModel');
 const Student = require('../models/studentModel');
+const Teacher = require('../models/teacherModel');
 
 exports.checkUserAuthentication = catchAsyncErrors(async (req, res, next) => {
   const { token } = req.cookies;
@@ -52,5 +53,23 @@ exports.checkStudentAuthentication = catchAsyncErrors(async (req, res, next) => 
     return next(new ErrorHandler('Student not found', 401));
   }
   req.student = student;
+  next();
+});
+
+exports.checkTeacherAuthentication = catchAsyncErrors(async (req, res, next) => {
+  const { token } = req.cookies;
+  if (!token) {
+    return next(
+      new ErrorHandler('Please login again to access this resource', 401)
+    );
+  }
+
+  const decodedData = await jwt.verify(token, process.env.JWT_SECRET);
+  const teacher = await Teacher.findById(decodedData.id);
+  if (!teacher) {
+    return next(new ErrorHandler('Teacher not found', 401));
+  }
+
+  req.teacher = teacher;
   next();
 });

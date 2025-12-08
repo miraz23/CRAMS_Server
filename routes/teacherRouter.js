@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const teacherController = require('../controllers/teacherController');
+const auth = require('../middleware/Auth');
 
 // get all teacher details
 router.route('/')
@@ -21,5 +22,9 @@ router.route('/:id')
   .get(teacherController.getSingleTeacherDetails)
   .put(teacherController.updateTeacher)
   .delete(teacherController.deleteTeacher);
+
+// advisor dashboard overview
+router.route('/advisor/dashboard')
+  .get(auth.checkTeacherAuthentication, teacherController.getAdvisorDashboard);
 
 module.exports = router;
