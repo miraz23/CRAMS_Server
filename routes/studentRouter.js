@@ -19,6 +19,10 @@ router.route('/login')
 router.route('/logout')
   .post(studentController.logoutStudent);
 
+// get authenticated student's schedule
+router.route('/schedule')
+  .get(auth.checkStudentAuthentication, studentController.getStudentSchedule);
+
 // get single student details
 router.route('/:id')
   .get(studentController.getSingleStudentDetails)

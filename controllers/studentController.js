@@ -1,6 +1,7 @@
 const Student = require('../models/studentModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
+const CourseRegistration = require('../models/courseRegistrationModel');
 const { formatDate, formatGPA } = require('../utils/helpers');
 const { sendToken } = require('../utils/jwt');
 
@@ -162,5 +163,98 @@ exports.deleteStudent = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Student deleted',
+  });
+});
+
+// Get the authenticated student's class schedule
+exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
+  const { semester, status } = req.query;
+  const statusFilter = status
+    ? status.split(',').map((item) => item.trim()).filter(Boolean)
+    : ['approved'];
+
+  const query = { student: req.student._id };
+  if (semester) {
+    query.semester = semester;
+  }
+  if (statusFilter.length > 0) {
+    query.status = { $in: statusFilter };
+  }
+
+  const registrations = await CourseRegistration.find(query).populate('course');
+
+  // Helper to sort time strings like "10:00 AM"
+  const parseTime = (timeStr) => {
+    if (!timeStr) return Infinity;
+    const [time, period] = timeStr.split(' ');
+    const [hours, minutes] = time.split(':');
+    let hour24 = parseInt(hours, 10);
+    if (period === 'PM' && hour24 !== 12) hour24 += 12;
+    if (period === 'AM' && hour24 === 12) hour24 = 0;
+    return hour24 * 60 + parseInt(minutes || 0, 10);
+  };
+
+  const daysTemplate = { Sun: [], Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [] };
+  const courses = [];
+
+  registrations.forEach((reg) => {
+    if (!reg.course) return;
+
+    const course = reg.course;
+    const courseSchedule = course.schedule || { days: [], startTime: '', endTime: '' };
+
+    const courseInfo = {
+      id: course._id,
+      registrationId: reg._id,
+      courseCode: course.courseCode,
+      courseName: course.courseName,
+      credits: course.credits,
+      instructor: course.instructor || '',
+      schedule: courseSchedule,
+      semester: reg.semester,
+      status: reg.status,
+    };
+
+    courses.push(courseInfo);
+
+    (courseSchedule.days || []).forEach((day) => {
+      if (!daysTemplate[day]) return;
+      daysTemplate[day].push({
+        courseId: course._id,
+        courseCode: course.courseCode,
+        courseName: course.courseName,
+        instructor: course.instructor || '',
+        startTime: courseSchedule.startTime || '',
+        endTime: courseSchedule.endTime || '',
+        status: reg.status,
+      });
+    });
+  });
+
+  // Sort classes within each day by start time and drop empty days
+  const weeklySchedule = Object.keys(daysTemplate).reduce((acc, day) => {
+    if (daysTemplate[day].length === 0) return acc;
+    acc[day] = daysTemplate[day].sort(
+      (a, b) => parseTime(a.startTime) - parseTime(b.startTime)
+    );
+    return acc;
+  }, {});
+
+  const totalCredits = courses.reduce((sum, course) => sum + (course.credits || 0), 0);
+  const summary = {
+    totalCourses: courses.length,
+    totalCredits,
+    daysWithClasses: Object.keys(weeklySchedule),
+  };
+
+  res.status(200).json({
+    success: true,
+    message: 'Schedule fetched successfully',
+    data: {
+      semester: semester || (registrations[0]?.semester || null),
+      courses,
+      weeklySchedule,
+      summary,
+    },
   });
 });
