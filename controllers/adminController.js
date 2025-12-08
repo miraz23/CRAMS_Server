@@ -780,6 +780,7 @@ const serializeTeacher = (teacher) => ({
   gender: teacher.gender,
   address: teacher.address,
   teacherImage: teacher.teacherImage,
+  privilege: teacher.privilege,
 });
 
 const serializeStaff = (staff) => ({
@@ -894,7 +895,20 @@ exports.updateTeacherByAdmin = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Teacher not found', 404));
   }
 
-  applyUpdates(teacher, req.body);
+  // Validate privilege if provided
+  if (req.body.privilege !== undefined) {
+    const allowedPrivileges = ['Teacher', 'Advisor'];
+    if (!allowedPrivileges.includes(req.body.privilege)) {
+      return next(new ErrorHandler('Invalid: privilege must be either "Teacher" or "Advisor"', 400));
+    }
+    teacher.privilege = req.body.privilege;
+  }
+
+  // Apply other updates (excluding privilege as it's already handled above)
+  const updates = { ...req.body };
+  delete updates.privilege;
+  applyUpdates(teacher, updates);
+  
   await teacher.save();
 
   res.status(200).json({

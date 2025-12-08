@@ -52,7 +52,8 @@ const teacherSchema = new mongoose.Schema({
     },
     privilege: {
         type: String,
-        default: 'Teacher'
+        default: 'Teacher',
+        enum: ['Teacher', 'Advisor']
     },
     password: {
         type: String,
