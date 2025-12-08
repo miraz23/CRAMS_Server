@@ -27,4 +27,8 @@ router.route('/:id')
 router.route('/advisor/dashboard')
   .get(auth.checkTeacherAuthentication, teacherController.getAdvisorDashboard);
 
+// advisor pending reviews
+router.route('/advisor/pending-reviews')
+  .get(auth.checkTeacherAuthentication, teacherController.getPendingReviews);
+
 module.exports = router;

@@ -1,5 +1,6 @@
 const Teacher = require('../models/teacherModel');
 const CourseRegistration = require('../models/courseRegistrationModel');
+const Course = require('../models/courseModel');
 const Student = require('../models/studentModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
@@ -283,6 +284,203 @@ exports.getAdvisorDashboard = catchAsyncError(async (req, res) => {
       },
       urgentReviews,
       recentActivity,
+    },
+  });
+});
+
+// Get pending reviews for advisor
+exports.getPendingReviews = catchAsyncError(async (req, res) => {
+  const { semester } = req.query;
+
+  const registrationQuery = { status: 'pending' };
+  if (semester && semester !== 'All Semesters') {
+    registrationQuery.semester = semester;
+  }
+
+  // Get all pending registrations with populated student and course data
+  const registrations = await CourseRegistration.find(registrationQuery)
+    .populate('student')
+    .populate('course')
+    .sort({ submittedAt: -1 });
+
+  // Group registrations by student, storing registration references
+  const pendingByStudent = registrations.reduce((acc, reg) => {
+    const studentId = reg.student?._id?.toString() || reg.student?.toString();
+    if (!studentId || !reg.student || !reg.course) return acc;
+
+    if (!acc[studentId]) {
+      acc[studentId] = {
+        studentId: reg.student._id,
+        studentName: reg.student.name || 'Unknown Student',
+        studentIdNumber: reg.student.studentId || '',
+        email: reg.student.email || '',
+        cgpa: null, // CGPA calculation would require a grades model
+        submittedAt: reg.submittedAt || reg.createdAt,
+        registrations: [], // Store full registration objects
+        totalRequestedCredits: 0,
+        currentCredits: 0,
+        hasIssues: false,
+      };
+    }
+
+    const credit = reg.course.credits || 0;
+    acc[studentId].registrations.push(reg);
+    acc[studentId].totalRequestedCredits += credit;
+
+    // Update submittedAt to earliest submission time
+    if (reg.submittedAt && (!acc[studentId].submittedAt || reg.submittedAt < acc[studentId].submittedAt)) {
+      acc[studentId].submittedAt = reg.submittedAt;
+    }
+
+    return acc;
+  }, {});
+
+  // Calculate current credits and check for issues for each student
+  const studentIds = Object.keys(pendingByStudent);
+  const reviewsWithDetails = await Promise.all(
+    studentIds.map(async (studentId) => {
+      const studentData = pendingByStudent[studentId];
+      const studentMongoId = studentData.studentId;
+
+      // Get all approved courses for current credits calculation
+      const approvedRegistrations = await CourseRegistration.find({
+        student: studentMongoId,
+        status: 'approved',
+      }).populate('course');
+
+      studentData.currentCredits = approvedRegistrations.reduce(
+        (sum, reg) => sum + (reg.course?.credits || 0),
+        0
+      );
+
+      // Process each registration and check for issues
+      const courses = studentData.registrations.map((reg) => {
+        const courseData = reg.course;
+        const issues = [];
+
+        // Check prerequisites
+        if (courseData.prerequisite) {
+          const prerequisiteCodes = courseData.prerequisite.split(',').map(code => code.trim());
+          const completedCourseCodes = approvedRegistrations.map(reg => reg.course?.courseCode).filter(Boolean);
+          const hasPrerequisite = prerequisiteCodes.some(code => completedCourseCodes.includes(code));
+          
+          if (!hasPrerequisite) {
+            issues.push({
+              type: 'prerequisite',
+              message: 'Prerequisites Not Met',
+            });
+            studentData.hasIssues = true;
+          }
+        }
+
+        // Check seat availability - need to fetch fresh course data for accurate seat count
+        const enrolledCount = courseData.enrolledStudents ? courseData.enrolledStudents.length : 0;
+        const totalSeats = (courseData.regularSeats || 0) + (courseData.irregularSeats || 0);
+        const availableSeats = Math.max(0, totalSeats - enrolledCount);
+
+        if (availableSeats <= 3 && availableSeats > 0) {
+          issues.push({
+            type: 'seats',
+            message: `Only ${availableSeats} seat${availableSeats !== 1 ? 's' : ''} left`,
+          });
+          // Note: Low seats might not be considered a critical issue, but we'll include it
+        } else if (availableSeats === 0) {
+          issues.push({
+            type: 'seats',
+            message: 'No seats available',
+          });
+          studentData.hasIssues = true;
+        }
+
+        return {
+          registrationId: reg._id,
+          courseId: courseData._id,
+          courseCode: courseData.courseCode || '',
+          courseName: courseData.courseName || '',
+          credits: courseData.credits || 0,
+          schedule: courseData.schedule || { days: [], startTime: '', endTime: '' },
+          semester: reg.semester,
+          issues,
+        };
+      });
+
+      return {
+        ...studentData,
+        courses,
+      };
+    })
+  );
+
+  // Format schedule for display (e.g., "Sun 10:00 AM - 12:00 PM" or "Mon, Wed 2:00 PM - 3:30 PM")
+  const formatSchedule = (schedule) => {
+    if (!schedule || !schedule.days || schedule.days.length === 0) {
+      return '';
+    }
+    const days = schedule.days.join(', ');
+    const time = schedule.startTime && schedule.endTime 
+      ? `${schedule.startTime} - ${schedule.endTime}`
+      : '';
+    return time ? `${days} ${time}` : days;
+  };
+
+  // Format date for display (e.g., "Mar 3, 2025 10:30 AM")
+  const formatDateTime = (date) => {
+    if (!date) return null;
+    const d = new Date(date);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const day = d.getDate();
+    const year = d.getFullYear();
+    
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    const timeStr = `${hours}:${minutes} ${ampm}`;
+    
+    return `${month} ${day}, ${year} ${timeStr}`;
+  };
+
+  // Format the response data
+  const formattedReviews = reviewsWithDetails.map((review) => ({
+    studentId: review.studentId,
+    studentName: review.studentName,
+    studentIdNumber: review.studentIdNumber,
+    email: review.email,
+    cgpa: review.cgpa,
+    submittedAt: review.submittedAt,
+    submittedAtFormatted: formatDateTime(review.submittedAt),
+    currentCredits: review.currentCredits,
+    requestedCredits: review.totalRequestedCredits,
+    totalCourses: review.courses.length,
+    hasIssues: review.hasIssues,
+    courses: review.courses.map((course) => ({
+      registrationId: course.registrationId,
+      courseId: course.courseId,
+      courseCode: course.courseCode,
+      courseName: course.courseName,
+      credits: course.credits,
+      schedule: formatSchedule(course.schedule),
+      scheduleDetails: course.schedule,
+      issues: course.issues,
+      hasIssues: course.issues.length > 0,
+    })),
+  }));
+
+  // Calculate summary statistics
+  const totalPending = formattedReviews.length;
+  const withIssues = formattedReviews.filter(review => review.hasIssues).length;
+
+  res.status(200).json({
+    success: true,
+    message: 'Pending reviews fetched successfully',
+    data: {
+      summary: {
+        totalPending,
+        withIssues,
+      },
+      reviews: formattedReviews,
     },
   });
 });
