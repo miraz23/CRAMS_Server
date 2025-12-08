@@ -39,6 +39,11 @@ const courseRegistrationSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
+  advisorFeedback: {
+    type: String,
+    trim: true,
+    default: '',
+  },
 }, {
   timestamps: true,
 });

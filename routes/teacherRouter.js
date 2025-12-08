@@ -39,4 +39,8 @@ router.route('/advisor/my-students')
 router.route('/advisor/students/:studentId')
   .get(auth.checkTeacherAuthentication, teacherController.getStudentDetails);
 
+// advisor approved courses
+router.route('/advisor/approved-courses')
+  .get(auth.checkTeacherAuthentication, teacherController.getApprovedCourses);
+
 module.exports = router;

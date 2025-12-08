@@ -763,3 +763,149 @@ exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
     },
   });
 });
+
+// Get approved courses for advisor dashboard
+exports.getApprovedCourses = catchAsyncError(async (req, res) => {
+  const teacherId = req.teacher.teacherId;
+  const { semester, startDate, endDate, studentId, courseCode, format } = req.query;
+
+  // Build query for approved courses
+  const registrationQuery = { status: 'approved' };
+  
+  if (semester && semester !== 'All Semesters') {
+    registrationQuery.semester = semester;
+  }
+
+  if (startDate || endDate) {
+    registrationQuery.approvedAt = {};
+    if (startDate) {
+      registrationQuery.approvedAt.$gte = new Date(startDate);
+    }
+    if (endDate) {
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      registrationQuery.approvedAt.$lte = end;
+    }
+  }
+
+  // Get advisor's sections to filter by assigned students
+  const sections = await Section.find({ 
+    assignedAdvisor: teacherId,
+    status: 'active'
+  });
+  const advisorSemesters = [...new Set(sections.map(s => s.semester))];
+
+  // If advisor has assigned semesters, filter by them (unless specific semester is provided)
+  if (advisorSemesters.length > 0 && !semester) {
+    registrationQuery.semester = { $in: advisorSemesters };
+  }
+
+  // Get all approved registrations
+  let registrations = await CourseRegistration.find(registrationQuery)
+    .populate('student')
+    .populate('course')
+    .sort({ approvedAt: -1 });
+
+  // Filter by studentId if provided
+  if (studentId) {
+    registrations = registrations.filter(reg => 
+      reg.student && reg.student.studentId && reg.student.studentId.toLowerCase().includes(studentId.toLowerCase())
+    );
+  }
+
+  // Filter by courseCode if provided
+  if (courseCode) {
+    registrations = registrations.filter(reg => 
+      reg.course && reg.course.courseCode && reg.course.courseCode.toLowerCase().includes(courseCode.toLowerCase())
+    );
+  }
+
+  // Calculate summary statistics
+  const totalApproved = registrations.length;
+
+  // Calculate "This Week" - approved courses in the current week
+  const now = new Date();
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
+  startOfWeek.setHours(0, 0, 0, 0);
+  
+  const approvedThisWeek = registrations.filter(reg => 
+    reg.approvedAt && reg.approvedAt >= startOfWeek
+  ).length;
+
+  // Calculate total credits
+  const totalCredits = registrations.reduce((sum, reg) => 
+    sum + (reg.course?.credits || 0), 0
+  );
+
+  // Format date helper (e.g., "Mar 1, 2025")
+  const formatApprovalDate = (date) => {
+    if (!date) return null;
+    const d = new Date(date);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[d.getMonth()];
+    const day = d.getDate();
+    const year = d.getFullYear();
+    return `${month} ${day}, ${year}`;
+  };
+
+  // Format recent approvals
+  const recentApprovals = registrations.map((reg) => ({
+    registrationId: reg._id,
+    courseCode: reg.course?.courseCode || '',
+    courseName: reg.course?.courseName || '',
+    credits: reg.course?.credits || 0,
+    status: reg.status,
+    studentId: reg.student?.studentId || '',
+    studentName: reg.student?.name || 'Unknown Student',
+    studentMongoId: reg.student?._id || null,
+    approvalDate: reg.approvedAt,
+    approvalDateFormatted: formatApprovalDate(reg.approvedAt),
+    advisorFeedback: reg.advisorFeedback || '',
+    semester: reg.semester,
+  }));
+
+  // If export format is requested (CSV)
+  if (format === 'csv' || format === 'export') {
+    const csvHeader = 'Course Code,Course Name,Credits,Student ID,Student Name,Approval Date,Feedback,Semester\n';
+    const csvRows = recentApprovals.map(approval => {
+      const escapeCSV = (str) => {
+        if (!str) return '';
+        const string = String(str);
+        if (string.includes(',') || string.includes('"') || string.includes('\n')) {
+          return `"${string.replace(/"/g, '""')}"`;
+        }
+        return string;
+      };
+      
+      return [
+        escapeCSV(approval.courseCode),
+        escapeCSV(approval.courseName),
+        approval.credits,
+        escapeCSV(approval.studentId),
+        escapeCSV(approval.studentName),
+        escapeCSV(approval.approvalDateFormatted || ''),
+        escapeCSV(approval.advisorFeedback),
+        escapeCSV(approval.semester),
+      ].join(',');
+    }).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="approved-courses-report.csv"');
+    return res.status(200).send(csvHeader + csvRows);
+  }
+
+  // Return JSON response
+  res.status(200).json({
+    success: true,
+    message: 'Approved courses fetched successfully',
+    data: {
+      summary: {
+        totalApproved,
+        approvedThisWeek,
+        totalCredits,
+      },
+      recentApprovals,
+    },
+  });
+});
