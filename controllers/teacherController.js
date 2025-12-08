@@ -2,6 +2,7 @@ const Teacher = require('../models/teacherModel');
 const CourseRegistration = require('../models/courseRegistrationModel');
 const Course = require('../models/courseModel');
 const Student = require('../models/studentModel');
+const Section = require('../models/sectionModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
@@ -481,6 +482,284 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
         withIssues,
       },
       reviews: formattedReviews,
+    },
+  });
+});
+
+// Get my students for advisor dashboard
+exports.getMyStudents = catchAsyncError(async (req, res) => {
+  const teacherId = req.teacher.teacherId;
+  const { search, semester } = req.query;
+
+  // Find all sections assigned to this advisor
+  const sections = await Section.find({ 
+    assignedAdvisor: teacherId,
+    status: 'active'
+  });
+
+  // Get unique semesters from assigned sections
+  const advisorSemesters = [...new Set(sections.map(s => s.semester))];
+
+  // If advisor has no sections, return empty result
+  if (advisorSemesters.length === 0 && !semester) {
+    return res.status(200).json({
+      success: true,
+      message: 'My students fetched successfully',
+      data: {
+        summary: {
+          totalStudents: 0,
+          pendingReviews: 0,
+          averageCGPA: null,
+        },
+        students: [],
+      },
+    });
+  }
+
+  // Build query for course registrations
+  const registrationQuery = {};
+  if (semester && semester !== 'All Semesters') {
+    registrationQuery.semester = semester;
+  } else if (advisorSemesters.length > 0) {
+    registrationQuery.semester = { $in: advisorSemesters };
+  }
+
+  // Get all course registrations for students in advisor's sections
+  const registrations = await CourseRegistration.find(registrationQuery)
+    .populate('student')
+    .populate('course');
+
+  // Get unique students
+  const studentMap = new Map();
+  
+  registrations.forEach((reg) => {
+    if (!reg.student) return;
+    
+    const studentId = reg.student._id.toString();
+    
+    if (!studentMap.has(studentId)) {
+      studentMap.set(studentId, {
+        _id: reg.student._id,
+        studentId: reg.student.studentId,
+        name: reg.student.name,
+        email: reg.student.email,
+        mobileNumber: reg.student.mobileNumber,
+        department: reg.student.department,
+        studentImage: reg.student.studentImage || '',
+        registrations: [],
+        pendingCount: 0,
+        totalCredits: 0,
+        currentSemester: null,
+      });
+    }
+    
+    const student = studentMap.get(studentId);
+    student.registrations.push(reg);
+    
+    // Count pending registrations
+    if (reg.status === 'pending') {
+      student.pendingCount++;
+    }
+    
+    // Track current semester (most recent)
+    if (reg.semester && (!student.currentSemester || reg.semester > student.currentSemester)) {
+      student.currentSemester = reg.semester;
+    }
+  });
+
+  // Process each student to calculate credits and CGPA
+  const studentsArray = await Promise.all(
+    Array.from(studentMap.values()).map(async (student) => {
+      // Calculate total credits from approved courses
+      const approvedRegistrations = student.registrations.filter(
+        (reg) => reg.status === 'approved' && reg.course
+      );
+      
+      const totalCredits = approvedRegistrations.reduce(
+        (sum, reg) => sum + (reg.course?.credits || 0),
+        0
+      );
+
+      // Calculate CGPA (simplified - assuming 4.0 scale)
+      // In a real system, this would use grades from a grades model
+      // For now, we'll use a placeholder or calculate based on approved courses
+      // Since we don't have grades, we'll set CGPA to null or calculate a simple average
+      let cgpa = null;
+      
+      // If you have a grades model, you would calculate CGPA here
+      // For now, we'll use a placeholder value or leave it null
+      // You can replace this with actual CGPA calculation when grades are available
+      
+      // Extract semester number from semester string (e.g., "7th Semester" -> 7)
+      let semesterNumber = null;
+      if (student.currentSemester) {
+        const match = student.currentSemester.match(/(\d+)/);
+        if (match) {
+          semesterNumber = match[1];
+        }
+      }
+
+      return {
+        _id: student._id,
+        studentId: student.studentId,
+        name: student.name,
+        email: student.email,
+        mobileNumber: student.mobileNumber,
+        department: student.department,
+        studentImage: student.studentImage,
+        cgpa: cgpa,
+        credits: totalCredits,
+        semester: student.currentSemester || 'N/A',
+        semesterNumber: semesterNumber,
+        status: 'Active', // You can add status logic based on your requirements
+        pendingCount: student.pendingCount,
+      };
+    })
+  );
+
+  // Apply search filter if provided
+  let filteredStudents = studentsArray;
+  if (search && search.trim()) {
+    const searchLower = search.toLowerCase().trim();
+    filteredStudents = studentsArray.filter((student) => {
+      return (
+        student.name.toLowerCase().includes(searchLower) ||
+        student.studentId.toLowerCase().includes(searchLower) ||
+        student.email.toLowerCase().includes(searchLower)
+      );
+    });
+  }
+
+  // Calculate summary statistics
+  const totalStudents = filteredStudents.length;
+  const totalPendingReviews = filteredStudents.reduce(
+    (sum, student) => sum + student.pendingCount,
+    0
+  );
+  
+  // Calculate average CGPA (excluding null values)
+  const cgpaValues = filteredStudents
+    .map((s) => s.cgpa)
+    .filter((cgpa) => cgpa !== null && cgpa !== undefined);
+  const averageCGPA = cgpaValues.length > 0
+    ? Number((cgpaValues.reduce((sum, val) => sum + val, 0) / cgpaValues.length).toFixed(2))
+    : null;
+
+  res.status(200).json({
+    success: true,
+    message: 'My students fetched successfully',
+    data: {
+      summary: {
+        totalStudents,
+        pendingReviews: totalPendingReviews,
+        averageCGPA: averageCGPA,
+      },
+      students: filteredStudents,
+    },
+  });
+});
+
+// Get single student details for advisor
+exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
+  const { studentId } = req.params;
+  const teacherId = req.teacher.teacherId;
+
+  if (!studentId) {
+    return next(new ErrorHandler('Student ID is required', 400));
+  }
+
+  // Find student
+  const student = await Student.findById(studentId);
+  if (!student) {
+    return next(new ErrorHandler('Student not found', 404));
+  }
+
+  // Verify student belongs to advisor's sections (optional check)
+  // Get advisor's sections
+  const sections = await Section.find({ 
+    assignedAdvisor: teacherId,
+    status: 'active'
+  });
+  const advisorSemesters = [...new Set(sections.map(s => s.semester))];
+
+  // Get student's course registrations
+  const registrations = await CourseRegistration.find({
+    student: studentId,
+    semester: { $in: advisorSemesters }
+  })
+    .populate('course')
+    .sort({ semester: -1, createdAt: -1 });
+
+  // Calculate student statistics
+  const approvedRegistrations = registrations.filter((reg) => reg.status === 'approved');
+  const pendingRegistrations = registrations.filter((reg) => reg.status === 'pending');
+  const rejectedRegistrations = registrations.filter((reg) => reg.status === 'rejected');
+
+  const totalCredits = approvedRegistrations.reduce(
+    (sum, reg) => sum + (reg.course?.credits || 0),
+    0
+  );
+
+  // Get current semester (most recent)
+  const currentSemester = registrations.length > 0 
+    ? registrations[0].semester 
+    : null;
+
+  // Extract semester number
+  let semesterNumber = null;
+  if (currentSemester) {
+    const match = currentSemester.match(/(\d+)/);
+    if (match) {
+      semesterNumber = match[1];
+    }
+  }
+
+  // Format registrations for response
+  const courseRegistrations = registrations.map((reg) => ({
+    registrationId: reg._id,
+    courseId: reg.course?._id || null,
+    courseCode: reg.course?.courseCode || '',
+    courseName: reg.course?.courseName || '',
+    credits: reg.course?.credits || 0,
+    semester: reg.semester,
+    status: reg.status,
+    submittedAt: reg.submittedAt,
+    approvedAt: reg.approvedAt,
+    rejectedAt: reg.rejectedAt,
+    rejectionReason: reg.rejectionReason || '',
+  }));
+
+  res.status(200).json({
+    success: true,
+    message: 'Student details fetched successfully',
+    data: {
+      student: {
+        _id: student._id,
+        studentId: student.studentId,
+        name: student.name,
+        email: student.email,
+        mobileNumber: student.mobileNumber,
+        department: student.department,
+        studentImage: student.studentImage || '',
+        dateOfBirth: formatDate(student.dateOfBirth),
+        gender: student.gender,
+        presentAddress: student.presentAddress,
+        permanentAddress: student.permanentAddress,
+      },
+      academic: {
+        cgpa: null, // Would need grades model to calculate
+        credits: totalCredits,
+        semester: currentSemester,
+        semesterNumber: semesterNumber,
+        status: 'Active',
+      },
+      registrations: {
+        total: registrations.length,
+        approved: approvedRegistrations.length,
+        pending: pendingRegistrations.length,
+        rejected: rejectedRegistrations.length,
+        courses: courseRegistrations,
+      },
     },
   });
 });

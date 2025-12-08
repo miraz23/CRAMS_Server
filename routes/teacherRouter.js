@@ -31,4 +31,12 @@ router.route('/advisor/dashboard')
 router.route('/advisor/pending-reviews')
   .get(auth.checkTeacherAuthentication, teacherController.getPendingReviews);
 
+// advisor my students
+router.route('/advisor/my-students')
+  .get(auth.checkTeacherAuthentication, teacherController.getMyStudents);
+
+// advisor student details
+router.route('/advisor/students/:studentId')
+  .get(auth.checkTeacherAuthentication, teacherController.getStudentDetails);
+
 module.exports = router;
