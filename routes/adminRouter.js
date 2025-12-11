@@ -116,22 +116,37 @@ router.route('/user-management/staff')
 router.route('/user-management/students/:id')
   .put(
     auth.checkUserAuthentication,
-    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    auth.checkAdminPrivileges('Super Admin'),
     adminController.updateStudentByAdmin
+  )
+  .delete(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    adminController.deleteStudentByAdmin
   );
 
 router.route('/user-management/teachers/:id')
   .put(
     auth.checkUserAuthentication,
-    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    auth.checkAdminPrivileges('Super Admin'),
     adminController.updateTeacherByAdmin
+  )
+  .delete(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    adminController.deleteTeacherByAdmin
   );
 
 router.route('/user-management/staff/:id')
   .put(
     auth.checkUserAuthentication,
-    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    auth.checkAdminPrivileges('Super Admin'),
     adminController.updateStaffByAdmin
+  )
+  .delete(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    adminController.deleteStaffByAdmin
   );
 
 // get single admin details

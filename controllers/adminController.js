@@ -11,21 +11,40 @@ const validator = require('validator');
 const { formatDate, formatGPA } = require('../utils/helpers');
 
 exports.getAllAdminDetails = catchAsyncError(async (req, res, next) => {
-  const admin = await Admin.find();
+  const [admins, staffAdmins] = await Promise.all([
+    Admin.find(),
+    Staff.find({ privilege: 'Admin' })
+  ]);
   
-  const adminData = admin.map((item) => {
+  const adminData = admins.map((item) => {
     return {
       id: item._id,
       name: item.name,
       email: item.email,
       privilege: item.privilege,
+      source: 'Admin',
     };
   });
+
+  const staffAdminData = staffAdmins.map((item) => {
+    return {
+      id: item._id,
+      name: item.name,
+      email: item.email,
+      privilege: item.privilege,
+      staffId: item.staffId,
+      department: item.department,
+      designation: item.designation,
+      source: 'Staff',
+    };
+  });
+
+  const allAdmins = [...adminData, ...staffAdminData];
 
   res.status(200).json({
     success: true,
     message: 'Admin details fetched successfully',
-    data: adminData,
+    data: allAdmins,
   });
 });
 
@@ -795,6 +814,7 @@ const serializeStaff = (staff) => ({
   gender: staff.gender,
   address: staff.address,
   staffImage: staff.staffImage,
+  privilege: staff.privilege,
 });
 
 const applyUpdates = (document, updates) => {
@@ -862,6 +882,10 @@ exports.updateStudentByAdmin = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student not found', 400));
   }
 
+  if (req.user?.privilege !== 'Super Admin') {
+    return next(new ErrorHandler('Only Super Admin can modify user records', 403));
+  }
+
   if (!req.body || Object.keys(req.body).length === 0) {
     return next(new ErrorHandler('Invalid: no data provided', 400));
   }
@@ -884,6 +908,10 @@ exports.updateStudentByAdmin = catchAsyncError(async (req, res, next) => {
 exports.updateTeacherByAdmin = catchAsyncError(async (req, res, next) => {
   if (!req.params.id) {
     return next(new ErrorHandler('Teacher not found', 400));
+  }
+
+  if (req.user?.privilege !== 'Super Admin') {
+    return next(new ErrorHandler('Only Super Admin can modify user records', 403));
   }
 
   if (!req.body || Object.keys(req.body).length === 0) {
@@ -923,6 +951,10 @@ exports.updateStaffByAdmin = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Staff not found', 400));
   }
 
+  if (req.user?.privilege !== 'Super Admin') {
+    return next(new ErrorHandler('Only Super Admin can modify user records', 403));
+  }
+
   if (!req.body || Object.keys(req.body).length === 0) {
     return next(new ErrorHandler('Invalid: no data provided', 400));
   }
@@ -932,12 +964,88 @@ exports.updateStaffByAdmin = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Staff not found', 404));
   }
 
-  applyUpdates(staff, req.body);
+  if (req.body.privilege !== undefined) {
+    const allowedPrivileges = ['Staff', 'Admin'];
+    if (!allowedPrivileges.includes(req.body.privilege)) {
+      return next(new ErrorHandler('Invalid: privilege must be either "Staff" or "Admin"', 400));
+    }
+    staff.privilege = req.body.privilege;
+  }
+
+  const updates = { ...req.body };
+  delete updates.privilege;
+  applyUpdates(staff, updates);
   await staff.save();
 
   res.status(200).json({
     success: true,
     message: 'Staff record updated successfully',
     data: serializeStaff(staff),
+  });
+});
+
+exports.deleteStudentByAdmin = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Student not found', 400));
+  }
+
+  if (req.user?.privilege !== 'Super Admin') {
+    return next(new ErrorHandler('Only Super Admin can delete user records', 403));
+  }
+
+  const student = await Student.findById(req.params.id);
+  if (!student) {
+    return next(new ErrorHandler('Student not found', 404));
+  }
+
+  await student.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: 'Student deleted successfully',
+  });
+});
+
+exports.deleteTeacherByAdmin = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Teacher not found', 400));
+  }
+
+  if (req.user?.privilege !== 'Super Admin') {
+    return next(new ErrorHandler('Only Super Admin can delete user records', 403));
+  }
+
+  const teacher = await Teacher.findById(req.params.id);
+  if (!teacher) {
+    return next(new ErrorHandler('Teacher not found', 404));
+  }
+
+  await teacher.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: 'Teacher deleted successfully',
+  });
+});
+
+exports.deleteStaffByAdmin = catchAsyncError(async (req, res, next) => {
+  if (!req.params.id) {
+    return next(new ErrorHandler('Staff not found', 400));
+  }
+
+  if (req.user?.privilege !== 'Super Admin') {
+    return next(new ErrorHandler('Only Super Admin can delete user records', 403));
+  }
+
+  const staff = await Staff.findById(req.params.id);
+  if (!staff) {
+    return next(new ErrorHandler('Staff not found', 404));
+  }
+
+  await staff.deleteOne();
+
+  res.status(200).json({
+    success: true,
+    message: 'Staff deleted successfully',
   });
 });
