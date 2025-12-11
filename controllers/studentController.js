@@ -12,8 +12,7 @@ exports.getAllStudentDetails = catchAsyncError(async (req, res, next) => {
       id: student._id,
       name: student.name,
       studentId: student.studentId,
-      email: student.email,
-      department: student.department
+      email: student.email
     };
   });
   res.status(200).json({
@@ -24,8 +23,8 @@ exports.getAllStudentDetails = catchAsyncError(async (req, res, next) => {
 });
 
 exports.registerStudent = catchAsyncError(async (req, res, next) => {
-  const { name, studentId, email, password, mobileNumber, department, fatherName, motherName, dateOfBirth, gender, religion, nationality, presentAddress, permanentAddress, sscBoardInstitute, sscGroup, sscPassingYear, sscGPA, hscBoardInstitute, hscGroup, hscPassingYear, hscGPA, studentImage } = req.body;
-  if (!name || !studentId || !email || !password || !mobileNumber || !department || !fatherName || !motherName || !dateOfBirth || !gender || !religion || !nationality || !presentAddress || !permanentAddress || !sscBoardInstitute || !sscGroup || !sscPassingYear || !sscGPA || !hscBoardInstitute || !hscGroup || !hscPassingYear || !hscGPA || !studentImage) {
+  const { name, studentId, email, password } = req.body;
+  if (!name || !studentId || !email || !password) {
     return next(new ErrorHandler('Missing fields', 400));
   }
   
@@ -34,7 +33,7 @@ exports.registerStudent = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Only emails with @ugrad.iiuc.ac.bd domain are allowed for student registration', 400));
   }
   
-  const student = await Student.create({ name, studentId, email, password, mobileNumber, department, fatherName, motherName, dateOfBirth, gender, religion, nationality, presentAddress, permanentAddress, sscBoardInstitute, sscGroup, sscPassingYear, sscGPA, hscBoardInstitute, hscGroup, hscPassingYear, hscGPA, studentImage });
+  const student = await Student.create({ name, studentId, email, password });
   
   res.status(200).json({
     success: true,
@@ -44,7 +43,6 @@ exports.registerStudent = catchAsyncError(async (req, res, next) => {
       name: student.name,
       studentId: student.studentId,
       email: student.email,
-      department: student.department
     },
   });
 }); 
@@ -95,25 +93,6 @@ exports.getSingleStudentDetails = catchAsyncError(async (req, res, next) => {
       name: student.name,
       studentId: student.studentId,
       email: student.email,
-      mobileNumber: student.mobileNumber,
-      department: student.department,
-      fatherName: student.fatherName,
-      motherName: student.motherName,
-      dateOfBirth: formatDate(student.dateOfBirth),
-      gender: student.gender,
-      religion: student.religion,
-      nationality: student.nationality,
-      presentAddress: student.presentAddress,
-      permanentAddress: student.permanentAddress,
-      sscBoardInstitute: student.sscBoardInstitute,
-      sscGroup: student.sscGroup,
-      sscPassingYear: student.sscPassingYear,
-      sscGPA: formatGPA(student.sscGPA),
-      hscBoardInstitute: student.hscBoardInstitute,
-      hscGroup: student.hscGroup,
-      hscPassingYear: student.hscPassingYear,
-      hscGPA: formatGPA(student.hscGPA),
-      studentImage: student.studentImage,
     },
   });
 });

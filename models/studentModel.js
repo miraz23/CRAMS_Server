@@ -23,78 +23,60 @@ const studentSchema = new mongoose.Schema({
     },
     mobileNumber: {
         type: String,
-        required: [true, 'Please provide mobile number'],
     },
     department: {
         type: String,
-        required: [true, 'Please provide department'],
     },
     fatherName: {
         type: String,
-        required: [true, 'Please provide father name'],
     },
     motherName: {
         type: String,
-        required: [true, 'Please provide mother name'],
     },
     dateOfBirth: {
         type: Date,
-        required: [true, 'Please provide date of birth'],
     },
     gender: {
         type: String,
-        required: [true, 'Please provide gender'],
         enum: ['Male', 'Female', 'Other'],
     },
     religion: {
         type: String,
-        required: [true, 'Please provide religion'],
     },
     nationality: {
         type: String,
-        required: [true, 'Please provide nationality'],
     },
     presentAddress: {
         type: String,
-        required: [true, 'Please provide present address'],
     },
     permanentAddress: {
         type: String,
-        required: [true, 'Please provide permanent address'],
     },
     sscBoardInstitute: {
         type: String,
-        required: [true, 'Please provide SSC board/institute'],
     },
     sscGroup: {
         type: String,
-        required: [true, 'Please provide SSC group'],
     },
     sscPassingYear: {
         type: Number,
-        required: [true, 'Please provide SSC passing year'],
     },
     sscGPA: {
         type: Number,
-        required: [true, 'Please provide SSC GPA'],
         min: [0, 'GPA cannot be negative'],
         max: [5, 'GPA cannot exceed 5'],
     },
     hscBoardInstitute: {
         type: String,
-        required: [true, 'Please provide HSC board/institute'],
     },
     hscGroup: {
         type: String,
-        required: [true, 'Please provide HSC group'],
     },
     hscPassingYear: {
         type: Number,
-        required: [true, 'Please provide HSC passing year'],
     },
     hscGPA: {
         type: Number,
-        required: [true, 'Please provide HSC GPA'],
         min: [0, 'GPA cannot be negative'],
         max: [5, 'GPA cannot exceed 5'],
     },
