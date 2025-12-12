@@ -106,13 +106,6 @@ router.route('/user-management/teachers')
     adminController.getAllTeachersForAdmin
   );
 
-router.route('/user-management/staff')
-  .get(
-    auth.checkUserAuthentication,
-    auth.checkAdminPrivileges('Admin', 'Super Admin'),
-    adminController.getAllStaffsForAdmin
-  );
-
 router.route('/user-management/students/:id')
   .put(
     auth.checkUserAuthentication,
@@ -135,18 +128,6 @@ router.route('/user-management/teachers/:id')
     auth.checkUserAuthentication,
     auth.checkAdminPrivileges('Super Admin'),
     adminController.deleteTeacherByAdmin
-  );
-
-router.route('/user-management/staff/:id')
-  .put(
-    auth.checkUserAuthentication,
-    auth.checkAdminPrivileges('Super Admin'),
-    adminController.updateStaffByAdmin
-  )
-  .delete(
-    auth.checkUserAuthentication,
-    auth.checkAdminPrivileges('Super Admin'),
-    adminController.deleteStaffByAdmin
   );
 
 // get single admin details

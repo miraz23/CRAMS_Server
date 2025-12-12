@@ -3,7 +3,6 @@ const Course = require('../models/courseModel');
 const Section = require('../models/sectionModel');
 const Student = require('../models/studentModel');
 const Teacher = require('../models/teacherModel');
-const Staff = require('../models/staffModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
@@ -11,10 +10,7 @@ const validator = require('validator');
 const { formatDate, formatGPA } = require('../utils/helpers');
 
 exports.getAllAdminDetails = catchAsyncError(async (req, res, next) => {
-  const [admins, staffAdmins] = await Promise.all([
-    Admin.find(),
-    Staff.find({ privilege: 'Admin' })
-  ]);
+  const admins = await Admin.find();
   
   const adminData = admins.map((item) => {
     return {
@@ -26,25 +22,10 @@ exports.getAllAdminDetails = catchAsyncError(async (req, res, next) => {
     };
   });
 
-  const staffAdminData = staffAdmins.map((item) => {
-    return {
-      id: item._id,
-      name: item.name,
-      email: item.email,
-      privilege: item.privilege,
-      staffId: item.staffId,
-      department: item.department,
-      designation: item.designation,
-      source: 'Staff',
-    };
-  });
-
-  const allAdmins = [...adminData, ...staffAdminData];
-
   res.status(200).json({
     success: true,
     message: 'Admin details fetched successfully',
-    data: allAdmins,
+    data: adminData,
   });
 });
 
@@ -802,21 +783,6 @@ const serializeTeacher = (teacher) => ({
   privilege: teacher.privilege,
 });
 
-const serializeStaff = (staff) => ({
-  id: staff._id,
-  name: staff.name,
-  staffId: staff.staffId,
-  email: staff.email,
-  mobileNumber: staff.mobileNumber,
-  department: staff.department,
-  designation: staff.designation,
-  dateOfBirth: formatDate(staff.dateOfBirth),
-  gender: staff.gender,
-  address: staff.address,
-  staffImage: staff.staffImage,
-  privilege: staff.privilege,
-});
-
 const applyUpdates = (document, updates) => {
   Object.entries(updates).forEach(([key, value]) => {
     if (['_id', '__v'].includes(key)) {
@@ -828,10 +794,9 @@ const applyUpdates = (document, updates) => {
 
 // User Management
 exports.getUserManagementOverview = catchAsyncError(async (req, res) => {
-  const [students, teachers, staffs] = await Promise.all([
+  const [students, teachers] = await Promise.all([
     Student.find(),
     Teacher.find(),
-    Staff.find(),
   ]);
 
   res.status(200).json({
@@ -841,11 +806,9 @@ exports.getUserManagementOverview = catchAsyncError(async (req, res) => {
       totals: {
         totalStudents: students.length,
         totalTeachers: teachers.length,
-        totalStaffs: staffs.length,
       },
       students: students.map(serializeStudent),
       teachers: teachers.map(serializeTeacher),
-      staffs: staffs.map(serializeStaff),
     },
   });
 });
@@ -865,15 +828,6 @@ exports.getAllTeachersForAdmin = catchAsyncError(async (req, res) => {
     success: true,
     message: 'All teacher details fetched successfully',
     data: teachers.map(serializeTeacher),
-  });
-});
-
-exports.getAllStaffsForAdmin = catchAsyncError(async (req, res) => {
-  const staffs = await Staff.find();
-  res.status(200).json({
-    success: true,
-    message: 'All staff details fetched successfully',
-    data: staffs.map(serializeStaff),
   });
 });
 
@@ -946,44 +900,6 @@ exports.updateTeacherByAdmin = catchAsyncError(async (req, res, next) => {
   });
 });
 
-exports.updateStaffByAdmin = catchAsyncError(async (req, res, next) => {
-  if (!req.params.id) {
-    return next(new ErrorHandler('Staff not found', 400));
-  }
-
-  if (req.user?.privilege !== 'Super Admin') {
-    return next(new ErrorHandler('Only Super Admin can modify user records', 403));
-  }
-
-  if (!req.body || Object.keys(req.body).length === 0) {
-    return next(new ErrorHandler('Invalid: no data provided', 400));
-  }
-
-  const staff = await Staff.findById(req.params.id).select('+password');
-  if (!staff) {
-    return next(new ErrorHandler('Staff not found', 404));
-  }
-
-  if (req.body.privilege !== undefined) {
-    const allowedPrivileges = ['Staff', 'Admin'];
-    if (!allowedPrivileges.includes(req.body.privilege)) {
-      return next(new ErrorHandler('Invalid: privilege must be either "Staff" or "Admin"', 400));
-    }
-    staff.privilege = req.body.privilege;
-  }
-
-  const updates = { ...req.body };
-  delete updates.privilege;
-  applyUpdates(staff, updates);
-  await staff.save();
-
-  res.status(200).json({
-    success: true,
-    message: 'Staff record updated successfully',
-    data: serializeStaff(staff),
-  });
-});
-
 exports.deleteStudentByAdmin = catchAsyncError(async (req, res, next) => {
   if (!req.params.id) {
     return next(new ErrorHandler('Student not found', 400));
@@ -1025,27 +941,5 @@ exports.deleteTeacherByAdmin = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Teacher deleted successfully',
-  });
-});
-
-exports.deleteStaffByAdmin = catchAsyncError(async (req, res, next) => {
-  if (!req.params.id) {
-    return next(new ErrorHandler('Staff not found', 400));
-  }
-
-  if (req.user?.privilege !== 'Super Admin') {
-    return next(new ErrorHandler('Only Super Admin can delete user records', 403));
-  }
-
-  const staff = await Staff.findById(req.params.id);
-  if (!staff) {
-    return next(new ErrorHandler('Staff not found', 404));
-  }
-
-  await staff.deleteOne();
-
-  res.status(200).json({
-    success: true,
-    message: 'Staff deleted successfully',
   });
 });
