@@ -12,20 +12,16 @@ const staffSchema = new mongoose.Schema({
     },
     staffId: {
         type: String,
-        required: [true, 'Please provide staff ID'],
         unique: true,
     },
     designation: {
         type: String,
-        required: [true, 'Please provide designation'],
     },
     department: {
         type: String,
-        required: [true, 'Please provide department'],
     },
     mobileNumber: {
         type: String,
-        required: [true, 'Please provide mobile number'],
     },
     email: {
         type: String,
@@ -35,16 +31,13 @@ const staffSchema = new mongoose.Schema({
     },
     dateOfBirth: {
         type: Date,
-        required: [true, 'Please provide date of birth'],
     },
     gender: {
         type: String,
-        required: [true, 'Please provide gender'],
         enum: ['Male', 'Female', 'Other'],
     },
     address: {
         type: String,
-        required: [true, 'Please provide address'],
     },
     staffImage: {
         type: String,

@@ -12,7 +12,6 @@ const teacherSchema = new mongoose.Schema({
     },
     teacherId: {
         type: String,
-        required: [true, 'Please provide teacher ID'],
         unique: true,
     },
     email: {
@@ -23,28 +22,22 @@ const teacherSchema = new mongoose.Schema({
     },
     mobileNumber: {
         type: String,
-        required: [true, 'Please provide mobile number'],
     },
     department: {
         type: String,
-        required: [true, 'Please provide department'],
     },
     designation: {
         type: String,
-        required: [true, 'Please provide designation'],
     },
     dateOfBirth: {
         type: Date,
-        required: [true, 'Please provide date of birth'],
     },
     gender: {
         type: String,
-        required: [true, 'Please provide gender'],
         enum: ['Male', 'Female', 'Other'],
     },
     address: {
         type: String,
-        required: [true, 'Please provide your current address'],
     },
     teacherImage: {
         type: String,

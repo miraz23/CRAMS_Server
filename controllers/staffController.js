@@ -10,8 +10,7 @@ exports.getAllStaffDetails = catchAsyncError(async (req, res, next) => {
     return {
       id: item._id,
       name: item.name,
-      designation: item.designation, 
-      department: item.department
+      email: item.email,
     };
   });
   res.status(200).json({
@@ -22,11 +21,11 @@ exports.getAllStaffDetails = catchAsyncError(async (req, res, next) => {
 });
 
 exports.registerStaff = catchAsyncError(async (req, res, next) => {
-  const { name, staffId, designation, department, mobileNumber, email,dateOfBirth, gender, password, address, staffImage } = req.body;
-  if (!name || !staffId || !designation || !department || !mobileNumber || !email || !dateOfBirth || !gender || !password || !address || !staffImage) {
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
     return next(new ErrorHandler('Missing fields', 400));
   }
-  const staff = await Staff.create({ name, staffId, designation, department, mobileNumber, email, dateOfBirth, gender, password, address, staffImage });
+  const staff = await Staff.create({ name, email, password });
   res.status(200).json({
     success: true,
     message: 'Staff registered successfully',
@@ -71,7 +70,11 @@ exports.getSingleStaffDetails = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Staff details fetched successfully',
-    data: staff,
+    data: {
+      id: staff._id,
+      name: staff.name,
+      email: staff.email,
+    },
   });
 })
 

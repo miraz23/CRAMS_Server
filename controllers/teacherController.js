@@ -30,7 +30,7 @@ exports.getAllTeacherDetails = catchAsyncError(async (req, res, next) => {
 
 exports.registerTeacher = catchAsyncError(async (req, res, next) => {
   const { name, teacherId, email, password, mobileNumber, department, designation, dateOfBirth, gender, address, teacherImage } = req.body;
-  if (!name || !teacherId || !email || !password || !mobileNumber || !department || !designation || !dateOfBirth || !gender || !address || !teacherImage) {
+  if (!name || !email || !password ) {
     return next(new ErrorHandler('Missing fields', 400));
   }
   
@@ -39,7 +39,7 @@ exports.registerTeacher = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Only emails with @iiuc.ac.bd domain are allowed for teacher registration', 400));
   }
   
-  const teacher = await Teacher.create({ name, teacherId, email, password, mobileNumber, department, designation, dateOfBirth, gender, address, teacherImage });
+  const teacher = await Teacher.create({ name, email, password });
   
   res.status(200).json({
     success: true,
@@ -47,29 +47,27 @@ exports.registerTeacher = catchAsyncError(async (req, res, next) => {
     data: {
       id: teacher._id,
       name: teacher.name,
-      teacherId: teacher.teacherId,
-      email: teacher.email,
-      department: teacher.department
+      email: teacher.email
     },
   });
 });
 
 exports.loginTeacher = catchAsyncError(async(req, res, next) => {
-  const { teacherId, password } = req.body;
+  const { email, password } = req.body;
 
-  if(!teacherId || !password){
+  if(!email || !password){
     return next(new ErrorHandler('Missing fields', 400));
   }
 
-  // Find a teacher by teacherId and explicitly include the password field in the query result
-  const teacher = await Teacher.findOne({ teacherId }).select('+password');
+  // Find a teacher by email and explicitly include the password field in the query result
+  const teacher = await Teacher.findOne({ email }).select('+password');
   if(!teacher){
-    return next(new ErrorHandler('Invalid teacher ID or password', 401));
+    return next(new ErrorHandler('Invalid email or password', 401));
   }
 
   const isPasswordCorrect = await teacher.comparePassword(password);
   if(!isPasswordCorrect){
-    return next(new ErrorHandler('Invalid teacher ID or password', 401));
+    return next(new ErrorHandler('Invalid email or password', 401));
   }
 
   sendToken(teacher, 200, res);
