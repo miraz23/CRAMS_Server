@@ -10,6 +10,11 @@ const adminSchema = new mongoose.Schema({
         maxlength: [30, 'Name cannot exceed 30 characters'],
         minLength: [4, 'Name must be atleast 4 characters long'],
     },
+    adminId: {
+        type: String,
+        unique: true,
+        sparse: true, // Allows null/undefined values but ensures uniqueness when present
+    },
     email: {
         type: String,
         required: [true, 'Please provide an email'],

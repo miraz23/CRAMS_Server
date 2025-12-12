@@ -16,6 +16,7 @@ exports.getAllAdminDetails = catchAsyncError(async (req, res, next) => {
     return {
       id: item._id,
       name: item.name,
+      adminId: item.adminId || null,
       email: item.email,
       privilege: item.privilege,
       source: 'Admin',
@@ -29,36 +30,6 @@ exports.getAllAdminDetails = catchAsyncError(async (req, res, next) => {
   });
 });
 
-exports.registerAdmin = catchAsyncError(async (req, res, next) => {
-  const { name, email, password, privilege } = req.body;
-  if (!name || !email || !password) {
-    return next(new ErrorHandler('Missing fields', 400));
-  }
-
-  // Check if this is the first admin
-  const adminCount = await Admin.countDocuments();
-  const isFirstAdmin = adminCount === 0;
-  // If it's the first admin, automatically set privilege to 'Super Admin'
-  const adminPrivilege = isFirstAdmin ? 'Super Admin' : (privilege || 'Admin');
-
-  const admin = await Admin.create({
-    name,
-    email,
-    privilege: adminPrivilege,
-    password,
-  });
-
-  res.status(200).json({
-    success: true,
-    message: isFirstAdmin ? 'Super Admin created successfully' : 'Admin created successfully',
-    data: {
-      id: admin._id,
-      name: admin.name,
-      email: admin.email,
-      privilege: admin.privilege,
-    },
-  });
-});
 
 exports.loginAdmin = catchAsyncError(async(req, res, next) => {
   const { email, password } = req.body;
@@ -103,6 +74,7 @@ exports.getSingleAdminDetails = catchAsyncError(async (req, res, next) => {
   const adminData = {
     id: admin._id,
     name: admin.name,
+    adminId: admin.adminId || null,
     email: admin.email,
     privilege: admin.privilege,
   };
@@ -114,13 +86,13 @@ exports.getSingleAdminDetails = catchAsyncError(async (req, res, next) => {
 });
 
 exports.updateAdminPrivilege = catchAsyncError(async (req, res, next) => {
-  const { name, email, privilege } = req.body;
+  const { name, email, privilege, adminId } = req.body;
   if (!req.params.id) {
     return next(new ErrorHandler('User not found', 400));
   }
   
   // Check if at least one field is provided
-  if (!name && !email && !privilege) {
+  if (!name && !email && !privilege && adminId === undefined) {
     return next(new ErrorHandler('Invalid: no data provided', 400));
   }
   
@@ -150,11 +122,20 @@ exports.updateAdminPrivilege = catchAsyncError(async (req, res, next) => {
       return next(new ErrorHandler('Invalid: email already exists', 400));
     }
   }
+
+  // Check if adminId is already taken by another admin (if provided and not empty)
+  if (adminId !== undefined && adminId !== null && adminId !== '') {
+    const existingAdminWithId = await Admin.findOne({ adminId, _id: { $ne: req.params.id } });
+    if (existingAdminWithId) {
+      return next(new ErrorHandler('Invalid: Admin ID already exists', 400));
+    }
+  }
   
   // Update fields if provided
   if (name) admin.name = name;
   if (email) admin.email = email;
   if (privilege) admin.privilege = privilege;
+  if (adminId !== undefined) admin.adminId = adminId || undefined; // Allow clearing adminId by setting to empty string
   
   await admin.save();
   
@@ -164,6 +145,7 @@ exports.updateAdminPrivilege = catchAsyncError(async (req, res, next) => {
     data: {
       id: admin._id,
       name: admin.name,
+      adminId: admin.adminId || null,
       email: admin.email,
       privilege: admin.privilege,
     },
@@ -941,5 +923,248 @@ exports.deleteTeacherByAdmin = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Teacher deleted successfully',
+  });
+});
+
+// CSV Upload for Student Creation (Super Admin and Admin)
+exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
+  if (!req.file) {
+    return next(new ErrorHandler('No CSV file uploaded', 400));
+  }
+
+  const fs = require('fs');
+  const csv = require('csv-parser');
+  const path = require('path');
+  const filePath = req.file.path;
+  const results = [];
+  const errors = [];
+  const created = [];
+  const skipped = [];
+
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (row) => {
+        results.push(row);
+      })
+      .on('end', async () => {
+        try {
+          // Process each row
+          for (const row of results) {
+            try {
+              // Extract data from CSV row
+              // CSV format: SL, Session, Department, Semester, Section, Student Id, Student Name, Email, Password
+              // Handle column names with spaces - csv-parser preserves them as-is
+              const studentId = (row['Student Id'] || row['StudentId'] || row['student id'] || row['studentid'] || '').trim();
+              const studentName = (row['Student Name'] || row['StudentName'] || row['student name'] || row['studentname'] || '').trim();
+              const email = (row['Email'] || row['email'] || '').trim();
+              const password = (row['Password'] || row['password'] || '').trim();
+              const department = (row['Department'] || row['department'] || '').trim();
+              const session = row['Session'] || row['session'] || '';
+              const semester = row['Semester'] || row['semester'] || '';
+              const section = row['Section'] || row['section'] || '';
+
+              // Validate required fields
+              if (!studentName || !studentId || !email || !password) {
+                errors.push({
+                  row: row,
+                  error: 'Missing required fields (Student Name, Student Id, Email, or Password)'
+                });
+                continue;
+              }
+
+              // Validate email format
+              if (!validator.isEmail(email)) {
+                errors.push({
+                  row: row,
+                  error: `Invalid email format: ${email}`
+                });
+                continue;
+              }
+
+              // Check if student already exists (by studentId or email)
+              const existingStudentById = await Student.findOne({ studentId });
+              const existingStudentByEmail = await Student.findOne({ email });
+              
+              if (existingStudentById || existingStudentByEmail) {
+                skipped.push({
+                  studentId: studentId,
+                  email: email,
+                  reason: existingStudentById ? 'Student with this ID already exists' : 'Student with this email already exists'
+                });
+                continue;
+              }
+
+              // Create student
+              const student = await Student.create({
+                name: studentName,
+                studentId: studentId,
+                email: email,
+                password: password,
+                department: department || undefined
+              });
+
+              created.push({
+                id: student._id,
+                name: student.name,
+                studentId: student.studentId,
+                email: student.email,
+                department: student.department
+              });
+            } catch (error) {
+              errors.push({
+                row: row,
+                error: error.message || 'Unknown error'
+              });
+            }
+          }
+
+          // Clean up uploaded file
+          fs.unlinkSync(filePath);
+
+          res.status(200).json({
+            success: true,
+            message: `CSV processed successfully. Created: ${created.length}, Skipped: ${skipped.length}, Errors: ${errors.length}`,
+            data: {
+              created: created,
+              skipped: skipped,
+              errors: errors
+            }
+          });
+          resolve();
+        } catch (error) {
+          // Clean up uploaded file on error
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          reject(error);
+        }
+      })
+      .on('error', (error) => {
+        // Clean up uploaded file on error
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        reject(error);
+      });
+  });
+});
+
+// CSV Upload for Admin Creation (Super Admin only)
+exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
+  if (!req.file) {
+    return next(new ErrorHandler('No CSV file uploaded', 400));
+  }
+
+  const fs = require('fs');
+  const csv = require('csv-parser');
+  const path = require('path');
+  const filePath = req.file.path;
+  const results = [];
+  const errors = [];
+  const created = [];
+  const skipped = [];
+
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (row) => {
+        results.push(row);
+      })
+      .on('end', async () => {
+        try {
+          // Process each row
+          for (const row of results) {
+            try {
+              // Extract data from CSV row
+              // CSV format: SL, Department, Admin Id, Admin Name, Email, Password
+              // Handle column names with spaces - csv-parser preserves them as-is
+              // Also handle variations (with/without spaces, different cases)
+              const adminId = row['Admin Id'] || row['AdminId'] || row['admin id'] || row['adminid'] || '';
+              const adminName = row['Admin Name'] || row['AdminName'] || row['admin name'] || row['adminname'] || '';
+              const email = (row['Email'] || row['email'] || '').trim();
+              const password = (row['Password'] || row['password'] || '').trim();
+              const department = row['Department'] || row['department'] || '';
+
+              // Validate required fields
+              if (!adminName || !email || !password) {
+                errors.push({
+                  row: row,
+                  error: 'Missing required fields (Admin Name, Email, or Password)'
+                });
+                continue;
+              }
+
+              // Validate email format
+              if (!validator.isEmail(email)) {
+                errors.push({
+                  row: row,
+                  error: `Invalid email format: ${email}`
+                });
+                continue;
+              }
+
+              // Check if admin already exists
+              const existingAdmin = await Admin.findOne({ email });
+              if (existingAdmin) {
+                skipped.push({
+                  email: email,
+                  reason: 'Admin with this email already exists'
+                });
+                continue;
+              }
+
+              // Create admin with 'Admin' privilege
+              const admin = await Admin.create({
+                name: adminName,
+                adminId: adminId || undefined,
+                email: email,
+                password: password,
+                privilege: 'Admin'
+              });
+
+              created.push({
+                id: admin._id,
+                name: admin.name,
+                adminId: admin.adminId,
+                email: admin.email,
+                privilege: admin.privilege
+              });
+            } catch (error) {
+              errors.push({
+                row: row,
+                error: error.message || 'Unknown error'
+              });
+            }
+          }
+
+          // Clean up uploaded file
+          fs.unlinkSync(filePath);
+
+          res.status(200).json({
+            success: true,
+            message: `CSV processed successfully. Created: ${created.length}, Skipped: ${skipped.length}, Errors: ${errors.length}`,
+            data: {
+              created: created,
+              skipped: skipped,
+              errors: errors
+            }
+          });
+          resolve();
+        } catch (error) {
+          // Clean up uploaded file on error
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          reject(error);
+        }
+      })
+      .on('error', (error) => {
+        // Clean up uploaded file on error
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        reject(error);
+      });
   });
 });

@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const adminController = require('../controllers/adminController');
 const auth = require('../middleware/Auth');
+const upload = require('../middleware/upload');
 
 // get all admin details
 router.route('/')
@@ -10,9 +11,23 @@ router.route('/')
     adminController.getAllAdminDetails
   );
 
-// register admin
-router.route('/register')
-  .post(adminController.registerAdmin);
+// CSV upload for student creation (Super Admin and Admin)
+router.route('/upload-student-csv')
+  .post(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    upload.single('csvFile'),
+    adminController.uploadStudentCSV
+  );
+
+// CSV upload for admin creation (Super Admin only)
+router.route('/upload-csv')
+  .post(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    upload.single('csvFile'),
+    adminController.uploadAdminCSV
+  );
 
 // admin login
 router.route('/login')

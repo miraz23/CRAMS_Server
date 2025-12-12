@@ -22,30 +22,6 @@ exports.getAllStudentDetails = catchAsyncError(async (req, res, next) => {
   });
 });
 
-exports.registerStudent = catchAsyncError(async (req, res, next) => {
-  const { name, studentId, email, password } = req.body;
-  if (!name || !studentId || !email || !password) {
-    return next(new ErrorHandler('Missing fields', 400));
-  }
-  
-  // Validate email domain for students
-  if (!email.endsWith('@ugrad.iiuc.ac.bd')) {
-    return next(new ErrorHandler('Only emails with @ugrad.iiuc.ac.bd domain are allowed for student registration', 400));
-  }
-  
-  const student = await Student.create({ name, studentId, email, password });
-  
-  res.status(200).json({
-    success: true,
-    message: 'Student registered successfully',
-    data: {
-      id: student._id,
-      name: student.name,
-      studentId: student.studentId,
-      email: student.email,
-    },
-  });
-}); 
 
 exports.loginStudent = catchAsyncError(async(req, res, next) => {
   const { studentId, password } = req.body;

@@ -7,10 +7,6 @@ const auth = require('../middleware/Auth');
 router.route('/')
   .get(studentController.getAllStudentDetails);
   
-// register student
-router.route('/register')
-  .post(studentController.registerStudent);
-
 // student login
 router.route('/login')
   .post(studentController.loginStudent);
