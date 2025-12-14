@@ -19,7 +19,7 @@ exports.sendToken = (user, statusCode, res) => {
     email: user.email,
   };
   
-  // Add privilege if it's an admin
+  // Add privilege if it exists (for Admin or Teacher/Advisor)
   if (user.privilege) {
     responseData.privilege = user.privilege;
   }

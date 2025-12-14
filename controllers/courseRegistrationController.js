@@ -60,21 +60,40 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     );
   }
 
-  // Get student's selected courses to mark them
+  // Get student's course registrations to mark them appropriately
   let selectedCourseIds = [];
+  let registeredCourseIds = []; // approved, pending, rejected courses
+  let registeredCourseStatuses = {}; // Map of courseId -> status
+  
   if (req.student) {
-    const registrations = await CourseRegistration.find({
+    const allRegistrations = await CourseRegistration.find({
       student: req.student._id,
-      status: { $in: ['selected', 'pending'] },
+    }).populate('course');
+    
+    allRegistrations.forEach(reg => {
+      const courseId = reg.course._id.toString();
+      const status = reg.status;
+      
+      if (status === 'selected' || status === 'pending') {
+        selectedCourseIds.push(courseId);
+      }
+      
+      // Track all registered courses (approved, pending, rejected)
+      if (['approved', 'pending', 'rejected', 'selected'].includes(status)) {
+        registeredCourseIds.push(courseId);
+        registeredCourseStatuses[courseId] = status;
+      }
     });
-    selectedCourseIds = registrations.map(reg => reg.course.toString());
   }
 
   const courseData = courses.map(course => {
     const enrolledCount = course.enrolledStudents ? course.enrolledStudents.length : 0;
     const totalSeats = course.regularSeats + course.irregularSeats;
     const availableSeats = Math.max(0, totalSeats - enrolledCount);
-    const isSelected = selectedCourseIds.includes(course._id.toString());
+    const courseIdStr = course._id.toString();
+    const isSelected = selectedCourseIds.includes(courseIdStr);
+    const isRegistered = registeredCourseIds.includes(courseIdStr);
+    const registrationStatus = registeredCourseStatuses[courseIdStr] || null;
 
     return {
       id: course._id,
@@ -92,6 +111,8 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       },
       semester: course.semester,
       isSelected,
+      isRegistered, // New field: true if course is already registered (approved/pending/rejected)
+      registrationStatus, // New field: status of existing registration if any
     };
   });
 
@@ -120,15 +141,27 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Course is not available', 400));
   }
 
-  // Check if already selected
+  // Check if already registered (selected, pending, approved, or rejected)
   const existingRegistration = await CourseRegistration.findOne({
     student: studentId,
     course: courseId,
     semester: course.semester,
   });
 
-  if (existingRegistration && existingRegistration.status === 'selected') {
-    return next(new ErrorHandler('Course already selected', 400));
+  if (existingRegistration) {
+    const status = existingRegistration.status;
+    if (status === 'selected') {
+      return next(new ErrorHandler('Course already selected', 400));
+    }
+    if (status === 'pending') {
+      return next(new ErrorHandler('Course is already pending approval', 400));
+    }
+    if (status === 'approved') {
+      return next(new ErrorHandler('Course is already approved', 400));
+    }
+    if (status === 'rejected') {
+      return next(new ErrorHandler('Course was previously rejected', 400));
+    }
   }
 
   // Check seat availability

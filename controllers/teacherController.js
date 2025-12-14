@@ -907,3 +907,201 @@ exports.getApprovedCourses = catchAsyncError(async (req, res) => {
     },
   });
 });
+
+// Approve a single course registration
+exports.approveRegistration = catchAsyncError(async (req, res, next) => {
+  const { registrationId } = req.params;
+  const { feedback } = req.body;
+
+  if (!registrationId) {
+    return next(new ErrorHandler('Registration ID is required', 400));
+  }
+
+  const registration = await CourseRegistration.findById(registrationId)
+    .populate('student')
+    .populate('course');
+
+  if (!registration) {
+    return next(new ErrorHandler('Registration not found', 404));
+  }
+
+  if (registration.status !== 'pending') {
+    return next(new ErrorHandler(`Registration is already ${registration.status}`, 400));
+  }
+
+  registration.status = 'approved';
+  registration.approvedAt = new Date();
+  if (feedback) {
+    registration.advisorFeedback = feedback;
+  }
+  await registration.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Course registration approved successfully',
+    data: {
+      registrationId: registration._id,
+      courseCode: registration.course?.courseCode,
+      studentId: registration.student?.studentId,
+      status: registration.status,
+    },
+  });
+});
+
+// Reject a single course registration
+exports.rejectRegistration = catchAsyncError(async (req, res, next) => {
+  const { registrationId } = req.params;
+  const { rejectionReason } = req.body;
+
+  if (!registrationId) {
+    return next(new ErrorHandler('Registration ID is required', 400));
+  }
+
+  const registration = await CourseRegistration.findById(registrationId)
+    .populate('student')
+    .populate('course');
+
+  if (!registration) {
+    return next(new ErrorHandler('Registration not found', 404));
+  }
+
+  if (registration.status !== 'pending') {
+    return next(new ErrorHandler(`Registration is already ${registration.status}`, 400));
+  }
+
+  registration.status = 'rejected';
+  registration.rejectedAt = new Date();
+  if (rejectionReason) {
+    registration.rejectionReason = rejectionReason;
+  }
+  await registration.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Course registration rejected successfully',
+    data: {
+      registrationId: registration._id,
+      courseCode: registration.course?.courseCode,
+      studentId: registration.student?.studentId,
+      status: registration.status,
+    },
+  });
+});
+
+// Bulk approve all registrations for a student
+exports.bulkApproveRegistrations = catchAsyncError(async (req, res, next) => {
+  const { studentId } = req.params;
+  const { registrationIds, feedback } = req.body;
+
+  if (!studentId) {
+    return next(new ErrorHandler('Student ID is required', 400));
+  }
+
+  // Build query - if registrationIds are provided, use them; otherwise approve all pending for student
+  const query = {
+    student: studentId,
+    status: 'pending',
+  };
+
+  if (registrationIds && Array.isArray(registrationIds) && registrationIds.length > 0) {
+    // Filter out any null/undefined values and ensure we have valid IDs
+    const validIds = registrationIds.filter(id => id != null && id !== '');
+    if (validIds.length > 0) {
+      query._id = { $in: validIds };
+    }
+  }
+
+  // Find all matching registrations first
+  const registrations = await CourseRegistration.find(query)
+    .populate('course');
+
+  if (registrations.length === 0) {
+    return next(new ErrorHandler('No pending registrations found', 404));
+  }
+
+  // Get the actual IDs from the found registrations to ensure we update the correct ones
+  const idsToUpdate = registrations.map(reg => reg._id);
+
+  const now = new Date();
+  const updateData = {
+    status: 'approved',
+    approvedAt: now,
+  };
+  if (feedback) {
+    updateData.advisorFeedback = feedback;
+  }
+
+  // Update using the actual IDs found
+  const updateResult = await CourseRegistration.updateMany(
+    { _id: { $in: idsToUpdate } },
+    updateData
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `${updateResult.modifiedCount} course registration(s) approved successfully`,
+    data: {
+      approvedCount: updateResult.modifiedCount,
+      foundCount: registrations.length,
+    },
+  });
+});
+
+// Bulk reject all registrations for a student
+exports.bulkRejectRegistrations = catchAsyncError(async (req, res, next) => {
+  const { studentId } = req.params;
+  const { registrationIds, rejectionReason } = req.body;
+
+  if (!studentId) {
+    return next(new ErrorHandler('Student ID is required', 400));
+  }
+
+  // Build query - if registrationIds are provided, use them; otherwise reject all pending for student
+  const query = {
+    student: studentId,
+    status: 'pending',
+  };
+
+  if (registrationIds && Array.isArray(registrationIds) && registrationIds.length > 0) {
+    // Filter out any null/undefined values and ensure we have valid IDs
+    const validIds = registrationIds.filter(id => id != null && id !== '');
+    if (validIds.length > 0) {
+      query._id = { $in: validIds };
+    }
+  }
+
+  // Find all matching registrations first
+  const registrations = await CourseRegistration.find(query)
+    .populate('course');
+
+  if (registrations.length === 0) {
+    return next(new ErrorHandler('No pending registrations found', 404));
+  }
+
+  // Get the actual IDs from the found registrations to ensure we update the correct ones
+  const idsToUpdate = registrations.map(reg => reg._id);
+
+  const now = new Date();
+  const updateData = {
+    status: 'rejected',
+    rejectedAt: now,
+  };
+  if (rejectionReason) {
+    updateData.rejectionReason = rejectionReason;
+  }
+
+  // Update using the actual IDs found
+  const updateResult = await CourseRegistration.updateMany(
+    { _id: { $in: idsToUpdate } },
+    updateData
+  );
+
+  res.status(200).json({
+    success: true,
+    message: `${updateResult.modifiedCount} course registration(s) rejected successfully`,
+    data: {
+      rejectedCount: updateResult.modifiedCount,
+      foundCount: registrations.length,
+    },
+  });
+});

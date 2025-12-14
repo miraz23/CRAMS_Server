@@ -1168,3 +1168,130 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
       });
   });
 });
+
+// CSV Upload for Teacher Creation (Super Admin only)
+exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
+  if (!req.file) {
+    return next(new ErrorHandler('No CSV file uploaded', 400));
+  }
+
+  const fs = require('fs');
+  const csv = require('csv-parser');
+  const path = require('path');
+  const filePath = req.file.path;
+  const results = [];
+  const errors = [];
+  const created = [];
+  const skipped = [];
+
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (row) => {
+        results.push(row);
+      })
+      .on('end', async () => {
+        try {
+          // Process each row
+          for (const row of results) {
+            try {
+              // Extract data from CSV row
+              // CSV format: SL, Department, Teacher Id, Teacher Name, Designation, Email, Contact, Password
+              // Handle column names with spaces - csv-parser preserves them as-is
+              // Also handle variations (with/without spaces, different cases)
+              const teacherId = (row['Teacher Id'] || row['TeacherId'] || row['teacher id'] || row['teacherid'] || '').trim();
+              const teacherName = (row['Teacher Name'] || row['TeacherName'] || row['teacher name'] || row['teachername'] || '').trim();
+              const email = (row['Email'] || row['email'] || '').trim();
+              const password = (row['Password'] || row['password'] || '').trim();
+              const department = (row['Department'] || row['department'] || '').trim();
+              const designation = (row['Designation'] || row['designation'] || '').trim();
+              const contact = (row['Contact'] || row['contact'] || '').trim();
+
+              // Validate required fields
+              if (!teacherName || !email || !password) {
+                errors.push({
+                  row: row,
+                  error: 'Missing required fields (Teacher Name, Email, or Password)'
+                });
+                continue;
+              }
+
+              // Validate email format
+              if (!validator.isEmail(email)) {
+                errors.push({
+                  row: row,
+                  error: `Invalid email format: ${email}`
+                });
+                continue;
+              }
+
+              // Check if teacher already exists (by teacherId or email)
+              const existingTeacherById = teacherId ? await Teacher.findOne({ teacherId }) : null;
+              const existingTeacherByEmail = await Teacher.findOne({ email });
+              
+              if (existingTeacherById || existingTeacherByEmail) {
+                skipped.push({
+                  teacherId: teacherId,
+                  email: email,
+                  reason: existingTeacherById ? 'Teacher with this ID already exists' : 'Teacher with this email already exists'
+                });
+                continue;
+              }
+
+              // Create teacher
+              const teacher = await Teacher.create({
+                name: teacherName,
+                teacherId: teacherId || undefined,
+                email: email,
+                password: password,
+                department: department || undefined,
+                designation: designation || undefined,
+                mobileNumber: contact || undefined
+              });
+
+              created.push({
+                id: teacher._id,
+                name: teacher.name,
+                teacherId: teacher.teacherId,
+                email: teacher.email,
+                department: teacher.department,
+                designation: teacher.designation
+              });
+            } catch (error) {
+              errors.push({
+                row: row,
+                error: error.message || 'Unknown error'
+              });
+            }
+          }
+
+          // Clean up uploaded file
+          fs.unlinkSync(filePath);
+
+          res.status(200).json({
+            success: true,
+            message: `CSV processed successfully. Created: ${created.length}, Skipped: ${skipped.length}, Errors: ${errors.length}`,
+            data: {
+              created: created,
+              skipped: skipped,
+              errors: errors
+            }
+          });
+          resolve();
+        } catch (error) {
+          // Clean up uploaded file on error
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          reject(error);
+        }
+      })
+      .on('error', (error) => {
+        // Clean up uploaded file on error
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+        reject(error);
+      });
+  });
+});

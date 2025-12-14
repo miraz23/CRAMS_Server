@@ -29,6 +29,15 @@ router.route('/upload-csv')
     adminController.uploadAdminCSV
   );
 
+// CSV upload for teacher creation (Super Admin only)
+router.route('/upload-teacher-csv')
+  .post(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Super Admin'),
+    upload.single('csvFile'),
+    adminController.uploadTeacherCSV
+  );
+
 // admin login
 router.route('/login')
   .post(adminController.loginAdmin);

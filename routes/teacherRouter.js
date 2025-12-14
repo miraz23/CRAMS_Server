@@ -43,4 +43,17 @@ router.route('/advisor/students/:studentId')
 router.route('/advisor/approved-courses')
   .get(auth.checkTeacherAuthentication, teacherController.getApprovedCourses);
 
+// approve/reject course registrations
+router.route('/advisor/approve/:registrationId')
+  .post(auth.checkTeacherAuthentication, teacherController.approveRegistration);
+
+router.route('/advisor/reject/:registrationId')
+  .post(auth.checkTeacherAuthentication, teacherController.rejectRegistration);
+
+router.route('/advisor/bulk-approve/:studentId')
+  .post(auth.checkTeacherAuthentication, teacherController.bulkApproveRegistrations);
+
+router.route('/advisor/bulk-reject/:studentId')
+  .post(auth.checkTeacherAuthentication, teacherController.bulkRejectRegistrations);
+
 module.exports = router;
