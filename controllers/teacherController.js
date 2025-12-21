@@ -495,11 +495,11 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     status: 'active'
   });
 
-  // Get unique semesters from assigned sections
-  const advisorSemesters = [...new Set(sections.map(s => s.semester))];
+  // Get section names assigned to this advisor (normalized to uppercase)
+  const sectionNames = sections.map(s => s.sectionName ? s.sectionName.trim().toUpperCase() : null).filter(Boolean);
 
   // If advisor has no sections, return empty result
-  if (advisorSemesters.length === 0 && !semester) {
+  if (sectionNames.length === 0) {
     return res.status(200).json({
       success: true,
       message: 'My students fetched successfully',
@@ -514,12 +514,37 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     });
   }
 
+  // Get all students registered in advisor's sections
+  const students = await Student.find({ 
+    section: { $in: sectionNames }
+  });
+
+  // If no students found, return empty result
+  if (students.length === 0) {
+    return res.status(200).json({
+      success: true,
+      message: 'My students fetched successfully',
+      data: {
+        summary: {
+          totalStudents: 0,
+          pendingReviews: 0,
+          averageCGPA: null,
+        },
+        students: [],
+      },
+    });
+  }
+
+  // Get student IDs
+  const studentIds = students.map(s => s._id);
+
   // Build query for course registrations
-  const registrationQuery = {};
+  const registrationQuery = {
+    student: { $in: studentIds }
+  };
+  
   if (semester && semester !== 'All Semesters') {
     registrationQuery.semester = semester;
-  } else if (advisorSemesters.length > 0) {
-    registrationQuery.semester = { $in: advisorSemesters };
   }
 
   // Get all course registrations for students in advisor's sections
@@ -562,6 +587,26 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     // Track current semester (most recent)
     if (reg.semester && (!student.currentSemester || reg.semester > student.currentSemester)) {
       student.currentSemester = reg.semester;
+    }
+  });
+
+  // Include students who don't have any course registrations yet
+  students.forEach((student) => {
+    const studentId = student._id.toString();
+    if (!studentMap.has(studentId)) {
+      studentMap.set(studentId, {
+        _id: student._id,
+        studentId: student.studentId,
+        name: student.name,
+        email: student.email,
+        mobileNumber: student.mobileNumber,
+        department: student.department,
+        studentImage: student.studentImage || '',
+        registrations: [],
+        pendingCount: 0,
+        totalCredits: 0,
+        currentSemester: null,
+      });
     }
   });
 

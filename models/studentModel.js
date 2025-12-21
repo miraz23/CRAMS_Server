@@ -84,6 +84,11 @@ const studentSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
+    section: {
+        type: String,
+        trim: true,
+        uppercase: true,
+    },
     password: {
         type: String,
         required: [true, 'Please provide a password'],

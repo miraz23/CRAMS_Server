@@ -731,6 +731,7 @@ const serializeStudent = (student) => ({
   email: student.email,
   mobileNumber: student.mobileNumber,
   department: student.department,
+  section: student.section,
   fatherName: student.fatherName,
   motherName: student.motherName,
   dateOfBirth: formatDate(student.dateOfBirth),
@@ -810,6 +811,16 @@ exports.getAllTeachersForAdmin = catchAsyncError(async (req, res) => {
     success: true,
     message: 'All teacher details fetched successfully',
     data: teachers.map(serializeTeacher),
+  });
+});
+
+// Get all advisors (teachers with privilege='Advisor')
+exports.getAllAdvisors = catchAsyncError(async (req, res) => {
+  const advisors = await Teacher.find({ privilege: 'Advisor' });
+  res.status(200).json({
+    success: true,
+    message: 'All advisors fetched successfully',
+    data: advisors.map(serializeTeacher),
   });
 });
 
@@ -987,11 +998,23 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
               const existingStudentByEmail = await Student.findOne({ email });
               
               if (existingStudentById || existingStudentByEmail) {
-                skipped.push({
-                  studentId: studentId,
-                  email: email,
-                  reason: existingStudentById ? 'Student with this ID already exists' : 'Student with this email already exists'
-                });
+                // Update existing student's section if provided
+                const existingStudent = existingStudentById || existingStudentByEmail;
+                if (section && section.trim()) {
+                  existingStudent.section = section.trim().toUpperCase();
+                  await existingStudent.save();
+                  skipped.push({
+                    studentId: studentId,
+                    email: email,
+                    reason: 'Student already exists - section updated'
+                  });
+                } else {
+                  skipped.push({
+                    studentId: studentId,
+                    email: email,
+                    reason: existingStudentById ? 'Student with this ID already exists' : 'Student with this email already exists'
+                  });
+                }
                 continue;
               }
 
@@ -1001,7 +1024,8 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 studentId: studentId,
                 email: email,
                 password: password,
-                department: department || undefined
+                department: department || undefined,
+                section: section ? section.trim().toUpperCase() : undefined
               });
 
               created.push({
@@ -1009,7 +1033,8 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 name: student.name,
                 studentId: student.studentId,
                 email: student.email,
-                department: student.department
+                department: student.department,
+                section: student.section
               });
             } catch (error) {
               errors.push({

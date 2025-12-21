@@ -130,6 +130,13 @@ router.route('/user-management/teachers')
     adminController.getAllTeachersForAdmin
   );
 
+router.route('/user-management/advisors')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getAllAdvisors
+  );
+
 router.route('/user-management/students/:id')
   .put(
     auth.checkUserAuthentication,
