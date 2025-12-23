@@ -172,10 +172,10 @@ exports.deleteAdmin = catchAsyncError(async (req, res, next) => {
 
 // Add a new course
 exports.addCourse = catchAsyncError(async (req, res, next) => {
-  const { courseCode, courseName, credits, department, prerequisite, regularSeats, irregularSeats, semester } = req.body;
+  const { courseCode, courseName, credits, department, prerequisite, semester, instructors, instructorSections } = req.body;
 
   // Validate required fields
-  if (!courseCode || !courseName || !credits || !department || regularSeats === undefined || irregularSeats === undefined || !semester) {
+  if (!courseCode || !courseName || !credits || !department || !semester) {
     return next(new ErrorHandler('Missing required fields', 400));
   }
 
@@ -185,6 +185,24 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Course code already exists', 400));
   }
 
+  // Normalize instructors
+  const normalizedInstructors = Array.isArray(instructors)
+    ? instructors.filter(Boolean).map((id) => id.toString().trim())
+    : [];
+
+  // Normalize instructorSections mapping
+  let normalizedInstructorSections = [];
+  if (Array.isArray(instructorSections)) {
+    normalizedInstructorSections = instructorSections
+      .filter((item) => item && item.instructorId)
+      .map((item) => ({
+        instructorId: item.instructorId.toString().trim(),
+        sections: Array.isArray(item.sections)
+          ? item.sections.filter(Boolean).map((s) => s.toString().trim())
+          : [],
+      }));
+  }
+
   // Create new course
   const course = await Course.create({
     courseCode: courseCode.toUpperCase(),
@@ -192,9 +210,8 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
     credits: Number(credits),
     department,
     prerequisite: prerequisite || '',
-    regularSeats: Number(regularSeats),
-    irregularSeats: Number(irregularSeats),
-    availableSeats: Number(regularSeats) + Number(irregularSeats),
+    instructors: normalizedInstructors,
+    instructorSections: normalizedInstructorSections,
     semester,
     status: 'active',
   });
@@ -209,9 +226,8 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
       credits: course.credits,
       department: course.department,
       prerequisite: course.prerequisite,
-      regularSeats: course.regularSeats,
-      irregularSeats: course.irregularSeats,
-      availableSeats: course.availableSeats,
+      instructors: course.instructors || [],
+      instructorSections: course.instructorSections || [],
       semester: course.semester,
       status: course.status,
     },
@@ -245,25 +261,6 @@ exports.getCourses = catchAsyncError(async (req, res, next) => {
 
   const courses = await Course.find(query).sort({ createdAt: -1 });
 
-  // Calculate statistics
-  const totalCourses = await Course.countDocuments();
-  const activeCourses = await Course.countDocuments({ status: 'active' });
-  const totalSeats = await Course.aggregate([
-    { 
-      $group: { 
-        _id: null, 
-        total: { 
-          $sum: { 
-            $add: ['$regularSeats', '$irregularSeats'] 
-          } 
-        } 
-      } 
-    },
-  ]);
-  const availableSeats = await Course.aggregate([
-    { $group: { _id: null, total: { $sum: '$availableSeats' } } },
-  ]);
-
   const courseData = courses.map((course) => ({
     id: course._id,
     courseCode: course.courseCode,
@@ -271,9 +268,8 @@ exports.getCourses = catchAsyncError(async (req, res, next) => {
     credits: course.credits,
     department: course.department,
     prerequisite: course.prerequisite,
-    regularSeats: course.regularSeats,
-    irregularSeats: course.irregularSeats,
-    availableSeats: course.availableSeats,
+    instructors: course.instructors || [],
+    instructorSections: course.instructorSections || [],
     semester: course.semester,
     status: course.status,
   }));
@@ -282,12 +278,6 @@ exports.getCourses = catchAsyncError(async (req, res, next) => {
     success: true,
     message: 'Courses fetched successfully',
     data: courseData,
-    statistics: {
-      totalCourses,
-      activeCourses,
-      totalSeats: totalSeats[0]?.total || 0,
-      availableSeats: availableSeats[0]?.total || 0,
-    },
   });
 });
 
@@ -334,10 +324,10 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     credits,
     department,
     prerequisite,
-    regularSeats,
-    irregularSeats,
     semester,
     status,
+    instructors,
+    instructorSections,
   } = req.body;
 
   const fieldsProvided = [
@@ -346,10 +336,10 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     credits,
     department,
     prerequisite,
-    regularSeats,
-    irregularSeats,
     semester,
     status,
+    instructors,
+    instructorSections,
   ].some((field) => field !== undefined);
 
   if (!fieldsProvided) {
@@ -393,20 +383,25 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     course.prerequisite = prerequisite;
   }
 
-  if (regularSeats !== undefined) {
-    const regularSeatsValue = Number(regularSeats);
-    if (Number.isNaN(regularSeatsValue)) {
-      return next(new ErrorHandler('Invalid regularSeats value', 400));
+  if (instructors !== undefined) {
+    if (!Array.isArray(instructors)) {
+      return next(new ErrorHandler('Invalid instructors value', 400));
     }
-    course.regularSeats = regularSeatsValue;
+    course.instructors = instructors.filter(Boolean).map((id) => id.toString().trim());
   }
 
-  if (irregularSeats !== undefined) {
-    const irregularSeatsValue = Number(irregularSeats);
-    if (Number.isNaN(irregularSeatsValue)) {
-      return next(new ErrorHandler('Invalid irregularSeats value', 400));
+  if (instructorSections !== undefined) {
+    if (!Array.isArray(instructorSections)) {
+      return next(new ErrorHandler('Invalid instructorSections value', 400));
     }
-    course.irregularSeats = irregularSeatsValue;
+    course.instructorSections = instructorSections
+      .filter((item) => item && item.instructorId)
+      .map((item) => ({
+        instructorId: item.instructorId.toString().trim(),
+        sections: Array.isArray(item.sections)
+          ? item.sections.filter(Boolean).map((s) => s.toString().trim())
+          : [],
+      }));
   }
 
   if (semester) {
@@ -951,6 +946,8 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
   const errors = [];
   const created = [];
   const skipped = [];
+  // Track sections touched by this CSV so we can auto-manage section records
+  const sectionStats = {};
 
   return new Promise((resolve, reject) => {
     fs.createReadStream(filePath)
@@ -973,7 +970,11 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
               const department = (row['Department'] || row['department'] || '').trim();
               const session = row['Session'] || row['session'] || '';
               const semester = row['Semester'] || row['semester'] || '';
-              const section = row['Section'] || row['section'] || '';
+              const sectionRaw = row['Section'] || row['section'] || '';
+              const section =
+                sectionRaw && typeof sectionRaw === 'string'
+                  ? sectionRaw.trim().toUpperCase()
+                  : '';
 
               // Validate required fields
               if (!studentName || !studentId || !email || !password) {
@@ -1000,14 +1001,24 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
               if (existingStudentById || existingStudentByEmail) {
                 // Update existing student's section if provided
                 const existingStudent = existingStudentById || existingStudentByEmail;
-                if (section && section.trim()) {
-                  existingStudent.section = section.trim().toUpperCase();
+                if (section) {
+                  existingStudent.section = section;
                   await existingStudent.save();
                   skipped.push({
                     studentId: studentId,
                     email: email,
                     reason: 'Student already exists - section updated'
                   });
+                  // Count this student towards the section
+                  if (section) {
+                    if (!sectionStats[section]) {
+                      sectionStats[section] = {
+                        semester: semester || undefined,
+                        count: 0,
+                      };
+                    }
+                    sectionStats[section].count += 1;
+                  }
                 } else {
                   skipped.push({
                     studentId: studentId,
@@ -1025,7 +1036,7 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 email: email,
                 password: password,
                 department: department || undefined,
-                section: section ? section.trim().toUpperCase() : undefined
+                section: section || undefined
               });
 
               created.push({
@@ -1036,10 +1047,70 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 department: student.department,
                 section: student.section
               });
+
+              // Track section enrollment for dynamic section management
+              if (section) {
+                if (!sectionStats[section]) {
+                  sectionStats[section] = {
+                    semester: semester || undefined,
+                    count: 0,
+                  };
+                }
+                sectionStats[section].count += 1;
+              }
             } catch (error) {
               errors.push({
                 row: row,
                 error: error.message || 'Unknown error'
+              });
+            }
+          }
+
+          // After processing students, ensure sections exist and enrollment is updated
+          const sectionNames = Object.keys(sectionStats);
+          for (const sectionName of sectionNames) {
+            try {
+              const stats = sectionStats[sectionName];
+              // Re-count from database to ensure accuracy
+              const enrolledCount = await Student.countDocuments({
+                section: sectionName,
+              });
+
+              let sectionDoc = await Section.findOne({ sectionName });
+              if (!sectionDoc) {
+                // Create a new section with minimal/default data.
+                // Other options (advisor, CR/ACR, etc.) can be edited later in the UI.
+                sectionDoc = await Section.create({
+                  sectionName,
+                  semester: stats.semester || 'Unknown',
+                  shift: 'Unknown',
+                  assignedAdvisor: 'TBD',
+                  totalCapacity: enrolledCount || 1,
+                  enrolledStudents: enrolledCount,
+                  crName: 'TBD',
+                  crContact: 'TBD',
+                  acrName: 'TBD',
+                  acrContact: 'TBD',
+                  status: 'active',
+                });
+              } else {
+                // Update existing section's enrolledStudents and ensure capacity
+                sectionDoc.enrolledStudents = enrolledCount;
+                if (
+                  typeof sectionDoc.totalCapacity !== 'number' ||
+                  sectionDoc.totalCapacity < enrolledCount
+                ) {
+                  sectionDoc.totalCapacity = enrolledCount || 1;
+                }
+                await sectionDoc.save();
+              }
+            } catch (sectionError) {
+              // Don't fail the whole CSV because of a single section issue
+              errors.push({
+                sectionName,
+                error:
+                  sectionError.message ||
+                  'Error while syncing section after CSV upload',
               });
             }
           }

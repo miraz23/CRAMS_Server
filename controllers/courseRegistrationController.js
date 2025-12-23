@@ -102,6 +102,7 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       credits: course.credits,
       department: course.department,
       instructor: course.instructor || '',
+      instructors: course.instructors || [],
       schedule: course.schedule || { days: [], startTime: '', endTime: '' },
       prerequisite: course.prerequisite || '',
       seats: {

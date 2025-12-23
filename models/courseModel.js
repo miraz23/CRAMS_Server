@@ -34,6 +34,16 @@ const courseSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
+  // Multiple instructors can be assigned to a course
+  instructors: [{
+    type: String,
+    trim: true,
+  }],
+  // Track which sections each instructor is responsible for
+  instructorSections: [{
+    instructorId: { type: String, trim: true },
+    sections: [{ type: String, trim: true }],
+  }],
   schedule: {
     days: [{
       type: String,
@@ -50,23 +60,17 @@ const courseSchema = new mongoose.Schema({
   },
   regularSeats: {
     type: Number,
-    required: [true, 'Please provide regular student seats'],
     min: [0, 'Regular seats cannot be negative'],
     default: 0,
   },
   irregularSeats: {
     type: Number,
-    required: [true, 'Please provide irregular student seats'],
     min: [0, 'Irregular seats cannot be negative'],
     default: 0,
   },
   availableSeats: {
     type: Number,
-    default: function() {
-      const totalSeats = (this.regularSeats || 0) + (this.irregularSeats || 0);
-      const enrolledCount = this.enrolledStudents ? this.enrolledStudents.length : 0;
-      return Math.max(0, totalSeats - enrolledCount);
-    },
+    default: 0,
     min: [0, 'Available seats cannot be negative'],
   },
   semester: {
@@ -87,7 +91,7 @@ const courseSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Ensure availableSeats is calculated before saving
+// Seat counts are optional; keep availableSeats stable even if not used.
 courseSchema.pre('save', function(next) {
   if (this.isNew || this.isModified('regularSeats') || this.isModified('irregularSeats') || this.isModified('enrolledStudents')) {
     const totalSeats = (this.regularSeats || 0) + (this.irregularSeats || 0);

@@ -591,9 +591,26 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
   });
 
   // Include students who don't have any course registrations yet
+  // Get section info for students to determine their semester
+  const studentSections = await Section.find({ 
+    sectionName: { $in: sectionNames },
+    status: 'active'
+  });
+  
+  const sectionSemesterMap = {};
+  studentSections.forEach(section => {
+    sectionSemesterMap[section.sectionName] = section.semester;
+  });
+
   students.forEach((student) => {
     const studentId = student._id.toString();
     if (!studentMap.has(studentId)) {
+      // Get semester from student's section
+      const studentSection = student.section ? student.section.toUpperCase() : null;
+      const semesterFromSection = studentSection && sectionSemesterMap[studentSection] 
+        ? sectionSemesterMap[studentSection] 
+        : null;
+      
       studentMap.set(studentId, {
         _id: student._id,
         studentId: student.studentId,
@@ -605,7 +622,7 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
         registrations: [],
         pendingCount: 0,
         totalCredits: 0,
-        currentSemester: null,
+        currentSemester: semesterFromSection,
       });
     }
   });
