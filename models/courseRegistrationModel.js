@@ -21,6 +21,11 @@ const courseRegistrationSchema = new mongoose.Schema({
     required: [true, 'Please provide semester'],
     trim: true,
   },
+  section: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Section',
+    required: false, // Optional for backward compatibility
+  },
   submittedForApproval: {
     type: Boolean,
     default: false,

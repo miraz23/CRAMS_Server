@@ -451,11 +451,11 @@ exports.deleteCourse = catchAsyncError(async (req, res, next) => {
 // Section Management
 exports.createSection = catchAsyncError(async (req, res, next) => {
   const {
-    sectionName, semester, shift, assignedAdvisor, totalCapacity, enrolledStudents, crName, crContact, acrName, acrContact, status,
+    sectionName, semester, shift, assignedAdvisor, regularStudents, maxIrregularStudents, enrolledStudents, crName, crContact, acrName, acrContact, status,
   } = req.body;
 
   const requiredFields = [
-    sectionName, semester, shift, assignedAdvisor, totalCapacity, crName, crContact, acrName, acrContact,
+    sectionName, semester, shift, assignedAdvisor, maxIrregularStudents, crName, crContact, acrName, acrContact,
   ];
 
   if (requiredFields.some((value) => value === undefined || value === null || value === '')) {
@@ -463,10 +463,22 @@ exports.createSection = catchAsyncError(async (req, res, next) => {
   }
 
   const formattedSectionName = sectionName.trim().toUpperCase();
-  const capacityValue = Number(totalCapacity);
+  
+  // Set regularStudents to enrolledStudents if not provided
+  let regularStudentsValue = regularStudents !== undefined ? Number(regularStudents) : (enrolledStudents !== undefined ? Number(enrolledStudents) : 0);
+  if (Number.isNaN(regularStudentsValue) || regularStudentsValue < 0) {
+    return next(new ErrorHandler('Invalid regular students value', 400));
+  }
 
-  if (Number.isNaN(capacityValue) || capacityValue < 1 || capacityValue > 50) {
-    return next(new ErrorHandler('Invalid total capacity (1-50)', 400));
+  const maxIrregularStudentsValue = Number(maxIrregularStudents);
+  if (Number.isNaN(maxIrregularStudentsValue) || maxIrregularStudentsValue < 0) {
+    return next(new ErrorHandler('Invalid maximum irregular students value', 400));
+  }
+
+  // Calculate totalCapacity
+  const capacityValue = regularStudentsValue + maxIrregularStudentsValue;
+  if (capacityValue < 1 || capacityValue > 50) {
+    return next(new ErrorHandler('Total capacity must be between 1 and 50', 400));
   }
 
   let enrollmentValue = enrolledStudents !== undefined ? Number(enrolledStudents) : 0;
@@ -487,6 +499,8 @@ exports.createSection = catchAsyncError(async (req, res, next) => {
     semester,
     shift,
     assignedAdvisor,
+    regularStudents: regularStudentsValue,
+    maxIrregularStudents: maxIrregularStudentsValue,
     totalCapacity: capacityValue,
     enrolledStudents: enrollmentValue,
     crName,
@@ -505,6 +519,8 @@ exports.createSection = catchAsyncError(async (req, res, next) => {
       semester: section.semester,
       shift: section.shift,
       assignedAdvisor: section.assignedAdvisor,
+      regularStudents: section.regularStudents,
+      maxIrregularStudents: section.maxIrregularStudents,
       totalCapacity: section.totalCapacity,
       enrolledStudents: section.enrolledStudents,
       availableSeats: section.availableSeats,
@@ -551,6 +567,8 @@ exports.getSections = catchAsyncError(async (req, res) => {
     semester: section.semester,
     shift: section.shift,
     assignedAdvisor: section.assignedAdvisor,
+    regularStudents: section.regularStudents || section.enrolledStudents || 0,
+    maxIrregularStudents: section.maxIrregularStudents || 0,
     totalCapacity: section.totalCapacity,
     enrolledStudents: section.enrolledStudents,
     availableSeats: section.availableSeats,
@@ -594,6 +612,8 @@ exports.getSingleSection = catchAsyncError(async (req, res, next) => {
       semester: section.semester,
       shift: section.shift,
       assignedAdvisor: section.assignedAdvisor,
+      regularStudents: section.regularStudents || section.enrolledStudents || 0,
+      maxIrregularStudents: section.maxIrregularStudents || 0,
       totalCapacity: section.totalCapacity,
       enrolledStudents: section.enrolledStudents,
       availableSeats: section.availableSeats,
@@ -618,7 +638,8 @@ exports.updateSection = catchAsyncError(async (req, res, next) => {
     semester,
     shift,
     assignedAdvisor,
-    totalCapacity,
+    regularStudents,
+    maxIrregularStudents,
     enrolledStudents,
     crName,
     crContact,
@@ -632,7 +653,8 @@ exports.updateSection = catchAsyncError(async (req, res, next) => {
     semester,
     shift,
     assignedAdvisor,
-    totalCapacity,
+    regularStudents,
+    maxIrregularStudents,
     enrolledStudents,
     crName,
     crContact,
@@ -671,16 +693,32 @@ exports.updateSection = catchAsyncError(async (req, res, next) => {
   if (acrContact) section.acrContact = acrContact;
   if (status) section.status = status;
 
-  if (totalCapacity !== undefined) {
-    const capacityValue = Number(totalCapacity);
-    if (Number.isNaN(capacityValue) || capacityValue < 1 || capacityValue > 50) {
-      return next(new ErrorHandler('Invalid total capacity (1-50)', 400));
+  // Handle regularStudents and maxIrregularStudents
+  let regularStudentsValue = section.regularStudents;
+  let maxIrregularStudentsValue = section.maxIrregularStudents;
+
+  if (regularStudents !== undefined) {
+    regularStudentsValue = Number(regularStudents);
+    if (Number.isNaN(regularStudentsValue) || regularStudentsValue < 0) {
+      return next(new ErrorHandler('Invalid regular students value', 400));
     }
-    if (section.enrolledStudents > capacityValue) {
-      return next(new ErrorHandler('Enrolled students exceed new capacity', 400));
-    }
-    section.totalCapacity = capacityValue;
+    section.regularStudents = regularStudentsValue;
   }
+
+  if (maxIrregularStudents !== undefined) {
+    maxIrregularStudentsValue = Number(maxIrregularStudents);
+    if (Number.isNaN(maxIrregularStudentsValue) || maxIrregularStudentsValue < 0) {
+      return next(new ErrorHandler('Invalid maximum irregular students value', 400));
+    }
+    section.maxIrregularStudents = maxIrregularStudentsValue;
+  }
+
+  // Calculate totalCapacity from regularStudents + maxIrregularStudents
+  const capacityValue = regularStudentsValue + maxIrregularStudentsValue;
+  if (capacityValue < 1 || capacityValue > 50) {
+    return next(new ErrorHandler('Total capacity must be between 1 and 50', 400));
+  }
+  section.totalCapacity = capacityValue;
 
   if (enrolledStudents !== undefined) {
     const enrollmentValue = Number(enrolledStudents);

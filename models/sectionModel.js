@@ -24,6 +24,16 @@ const sectionSchema = new mongoose.Schema(
       required: [true, 'Please provide an assigned advisor'],
       trim: true,
     },
+    regularStudents: {
+      type: Number,
+      default: 0,
+      min: [0, 'Regular students cannot be negative'],
+    },
+    maxIrregularStudents: {
+      type: Number,
+      default: 0,
+      min: [0, 'Maximum irregular students cannot be negative'],
+    },
     totalCapacity: {
       type: Number,
       required: [true, 'Please provide total section capacity'],
@@ -76,6 +86,25 @@ const sectionSchema = new mongoose.Schema(
 );
 
 sectionSchema.pre('save', function (next) {
+  // Set regularStudents to enrolledStudents if not explicitly set
+  if (this.regularStudents === undefined || this.regularStudents === null) {
+    this.regularStudents = Number(this.enrolledStudents || 0);
+  }
+
+  // Calculate totalCapacity from regularStudents + maxIrregularStudents
+  const regular = Number(this.regularStudents || 0);
+  const maxIrregular = Number(this.maxIrregularStudents || 0);
+  this.totalCapacity = regular + maxIrregular;
+
+  // Validate totalCapacity
+  if (this.totalCapacity < 1 || this.totalCapacity > 50) {
+    return next(
+      new Error(
+        'Total capacity must be between 1 and 50'
+      )
+    );
+  }
+
   const total = Number(this.totalCapacity || 0);
   const enrolled = Number(this.enrolledStudents || 0);
 

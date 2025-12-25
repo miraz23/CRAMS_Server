@@ -1,6 +1,8 @@
 const Course = require('../models/courseModel');
 const CourseRegistration = require('../models/courseRegistrationModel');
 const Student = require('../models/studentModel');
+const Teacher = require('../models/teacherModel');
+const Section = require('../models/sectionModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 
@@ -64,11 +66,12 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
   let selectedCourseIds = [];
   let registeredCourseIds = []; // approved, pending, rejected courses
   let registeredCourseStatuses = {}; // Map of courseId -> status
+  let selectedSections = {}; // Map of courseId -> sectionId
   
   if (req.student) {
     const allRegistrations = await CourseRegistration.find({
       student: req.student._id,
-    }).populate('course');
+    }).populate('course').populate('section');
     
     allRegistrations.forEach(reg => {
       const courseId = reg.course._id.toString();
@@ -76,6 +79,9 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       
       if (status === 'selected' || status === 'pending') {
         selectedCourseIds.push(courseId);
+        if (reg.section) {
+          selectedSections[courseId] = reg.section._id.toString();
+        }
       }
       
       // Track all registered courses (approved, pending, rejected)
@@ -86,7 +92,64 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     });
   }
 
-  const courseData = courses.map(course => {
+  // Get student's section and semester if logged in
+  let studentSemester = null;
+  if (req.student) {
+    const student = await Student.findById(req.student._id).select('section');
+    if (student && student.section) {
+      const studentSection = await Section.findOne({ 
+        sectionName: student.section,
+        status: 'active'
+      });
+      if (studentSection) {
+        studentSemester = studentSection.semester;
+      }
+    }
+  }
+
+  // Fetch all teachers to map IDs to names
+  const teachers = await Teacher.find({}, 'teacherId name');
+  const teacherMap = new Map(teachers.map(t => [t.teacherId, t.name]));
+
+  // Get all course registrations to count irregular students per section
+  const allCourseRegistrations = await CourseRegistration.find({
+    status: { $in: ['selected', 'pending', 'approved'] }
+  }).populate('student').populate('course').populate('section');
+
+  // Build a map to count irregular students per course-section combination
+  // courseId -> sectionId -> count
+  const irregularCountMap = new Map();
+
+  // Get all sections to build a semester map
+  const allSections = await Section.find({ status: 'active' });
+  const sectionSemesterMap = new Map();
+  allSections.forEach(section => {
+    sectionSemesterMap.set(section.sectionName, section.semester);
+  });
+
+  // Count irregular students per course-section
+  for (const reg of allCourseRegistrations) {
+    if (!reg.course || !reg.student || !reg.section) continue;
+    
+    const courseSemester = reg.course.semester;
+    const studentSectionSemester = sectionSemesterMap.get(reg.student.section);
+    
+    if (studentSectionSemester && studentSectionSemester !== courseSemester) {
+      // This is an irregular student for this course
+      const courseId = reg.course._id.toString();
+      const sectionId = reg.section._id.toString();
+      
+      if (!irregularCountMap.has(courseId)) {
+        irregularCountMap.set(courseId, new Map());
+      }
+      const sectionMap = irregularCountMap.get(courseId);
+      const currentCount = sectionMap.get(sectionId) || 0;
+      sectionMap.set(sectionId, currentCount + 1);
+    }
+  }
+
+  // Process courses with section information
+  const courseDataPromises = courses.map(async (course) => {
     const enrolledCount = course.enrolledStudents ? course.enrolledStudents.length : 0;
     const totalSeats = course.regularSeats + course.irregularSeats;
     const availableSeats = Math.max(0, totalSeats - enrolledCount);
@@ -94,6 +157,45 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     const isSelected = selectedCourseIds.includes(courseIdStr);
     const isRegistered = registeredCourseIds.includes(courseIdStr);
     const registrationStatus = registeredCourseStatuses[courseIdStr] || null;
+
+    // Map instructor IDs to names
+    const instructorNames = (course.instructors || [])
+      .map(id => teacherMap.get(id) || id)
+      .filter(Boolean);
+
+    // Get all sections for this course's semester
+    const sections = await Section.find({
+      semester: course.semester,
+      status: 'active'
+    }).sort({ sectionName: 1 });
+
+    // Get irregular count for this course
+    const courseIrregularMap = irregularCountMap.get(courseIdStr) || new Map();
+
+    // Build sections array with seat information
+    const sectionsWithSeats = sections.map(section => {
+      const isRegular = studentSemester === course.semester;
+      const sectionId = section._id.toString();
+      
+      let availableSeatsForSection;
+      if (isRegular) {
+        // Regular students see: number of students in that section
+        availableSeatsForSection = section.enrolledStudents || 0;
+      } else {
+        // Irregular students see: maximum irregular seats allowed minus already registered
+        const maxIrregular = section.maxIrregularStudents || 0;
+        const registeredIrregular = courseIrregularMap.get(sectionId) || 0;
+        availableSeatsForSection = Math.max(0, maxIrregular - registeredIrregular);
+      }
+
+      return {
+        id: section._id.toString(),
+        sectionName: section.sectionName,
+        availableSeats: availableSeatsForSection,
+        maxIrregularSeats: section.maxIrregularStudents || 0,
+        enrolledStudents: section.enrolledStudents || 0,
+      };
+    });
 
     return {
       id: course._id,
@@ -103,6 +205,7 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       department: course.department,
       instructor: course.instructor || '',
       instructors: course.instructors || [],
+      instructorNames: instructorNames.length > 0 ? instructorNames : (course.instructor ? [course.instructor] : []),
       schedule: course.schedule || { days: [], startTime: '', endTime: '' },
       prerequisite: course.prerequisite || '',
       seats: {
@@ -110,12 +213,17 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
         available: availableSeats,
         enrolled: enrolledCount,
       },
+      sections: sectionsWithSeats, // New field: sections with seat information
+      selectedSectionId: selectedSections[courseIdStr] || null, // Section ID if already selected
       semester: course.semester,
       isSelected,
-      isRegistered, // New field: true if course is already registered (approved/pending/rejected)
-      registrationStatus, // New field: status of existing registration if any
+      isRegistered,
+      registrationStatus,
+      isRegular: studentSemester === course.semester, // Helper field to know if student is regular
     };
   });
+
+  const courseData = await Promise.all(courseDataPromises);
 
   res.status(200).json({
     success: true,
@@ -126,7 +234,7 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
 
 // Add course to selection
 exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
-  const { courseId } = req.body;
+  const { courseId, sectionId } = req.body;
   const studentId = req.student._id;
 
   if (!courseId) {
@@ -140,6 +248,76 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
 
   if (course.status !== 'active') {
     return next(new ErrorHandler('Course is not available', 400));
+  }
+
+  // Get student's section and semester
+  const student = await Student.findById(studentId).select('section');
+  let studentSemester = null;
+  if (student && student.section) {
+    const studentSection = await Section.findOne({ 
+      sectionName: student.section,
+      status: 'active'
+    });
+    if (studentSection) {
+      studentSemester = studentSection.semester;
+    }
+  }
+
+  // Validate section if provided
+  let selectedSection = null;
+  if (sectionId) {
+    selectedSection = await Section.findById(sectionId);
+    if (!selectedSection) {
+      return next(new ErrorHandler('Section not found', 404));
+    }
+    if (selectedSection.semester !== course.semester) {
+      return next(new ErrorHandler('Section does not belong to the course semester', 400));
+    }
+    if (selectedSection.status !== 'active') {
+      return next(new ErrorHandler('Section is not active', 400));
+    }
+
+    // Check if student is regular or irregular for this course
+    const isRegular = studentSemester === course.semester;
+    
+    if (isRegular) {
+      // For regular students, check if section has capacity
+      // Regular students see enrolledStudents as available seats
+      // But we need to check if there's actual capacity
+      // For now, we'll allow if section is active
+    } else {
+      // For irregular students, check maxIrregularStudents
+      // Count how many irregular students are already registered in this section for this course
+      const irregularRegistrations = await CourseRegistration.countDocuments({
+        course: courseId,
+        section: sectionId,
+        status: { $in: ['selected', 'pending', 'approved'] }
+      }).populate('student');
+
+      // Get actual count of irregular students in this section for this course
+      let irregularCount = 0;
+      const registrations = await CourseRegistration.find({
+        course: courseId,
+        section: sectionId,
+        status: { $in: ['selected', 'pending', 'approved'] }
+      }).populate('student');
+
+      for (const reg of registrations) {
+        if (reg.student && reg.student.section) {
+          const regStudentSection = await Section.findOne({ 
+            sectionName: reg.student.section,
+            status: 'active'
+          });
+          if (regStudentSection && regStudentSection.semester !== course.semester) {
+            irregularCount++;
+          }
+        }
+      }
+
+      if (irregularCount >= selectedSection.maxIrregularStudents) {
+        return next(new ErrorHandler('No irregular seats available in this section', 400));
+      }
+    }
   }
 
   // Check if already registered (selected, pending, approved, or rejected)
@@ -165,7 +343,7 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
 
-  // Check seat availability
+  // Check seat availability (general check)
   const enrolledCount = course.enrolledStudents ? course.enrolledStudents.length : 0;
   const totalSeats = course.regularSeats + course.irregularSeats;
   if (enrolledCount >= totalSeats) {
@@ -194,6 +372,9 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   if (existingRegistration) {
     existingRegistration.status = 'selected';
     existingRegistration.submittedForApproval = false;
+    if (selectedSection) {
+      existingRegistration.section = selectedSection._id;
+    }
     await existingRegistration.save();
   } else {
     await CourseRegistration.create({
@@ -201,6 +382,7 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
       course: courseId,
       semester: course.semester,
       status: 'selected',
+      section: selectedSection ? selectedSection._id : undefined,
     });
   }
 
