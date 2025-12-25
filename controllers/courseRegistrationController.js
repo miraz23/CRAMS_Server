@@ -665,12 +665,62 @@ exports.getRegistrationStatus = catchAsyncError(async (req, res, next) => {
 
   const registrations = await CourseRegistration.find(query)
     .populate('course')
+    .populate('section')
     .sort({ createdAt: -1 });
+
+  // Get student's section to access section-specific instructors
+  const Student = require('../models/studentModel');
+  const student = await Student.findById(studentId).populate('section');
+  const studentSection = student?.section;
+
+  // Fetch all teachers to map instructor IDs to names
+  const Teacher = require('../models/teacherModel');
+  const teachers = await Teacher.find({}, 'teacherId name');
+  const teacherMap = new Map();
+  teachers.forEach(teacher => {
+    if (teacher.teacherId) {
+      teacherMap.set(teacher.teacherId, teacher.name);
+    }
+  });
 
   const statusData = registrations.map(reg => {
     const enrolledCount = reg.course.enrolledStudents ? reg.course.enrolledStudents.length : 0;
     const totalSeats = reg.course.regularSeats + reg.course.irregularSeats;
     const availableSeats = Math.max(0, totalSeats - enrolledCount);
+
+    // Resolve instructor name(s)
+    let instructorName = '';
+    const sectionToCheckForInstructor = reg.section || studentSection;
+    const sectionName = sectionToCheckForInstructor?.sectionName;
+
+    // Check if course uses section-specific instructor assignments
+    const hasSectionSpecificInstructors = reg.course.instructorSections && 
+      Array.isArray(reg.course.instructorSections) && 
+      reg.course.instructorSections.length > 0;
+
+    // First, try to find section-specific instructor
+    if (sectionName && hasSectionSpecificInstructors) {
+      const sectionInstructor = reg.course.instructorSections.find(instSec => 
+        instSec.sections && instSec.sections.includes(sectionName)
+      );
+      
+      if (sectionInstructor && sectionInstructor.instructorId) {
+        instructorName = teacherMap.get(sectionInstructor.instructorId) || sectionInstructor.instructorId;
+      }
+      // If section-specific assignments exist but this section has no instructor, leave as empty (will show TBA)
+    } else if (!hasSectionSpecificInstructors) {
+      // Only use general instructors if section-specific assignments are NOT being used
+      if (Array.isArray(reg.course.instructors) && reg.course.instructors.length > 0) {
+        const instructorNames = reg.course.instructors
+          .map(id => teacherMap.get(id) || id)
+          .filter(Boolean);
+        instructorName = instructorNames.length > 0 ? instructorNames.join(', ') : '';
+      } else if (reg.course.instructor) {
+        // Check if instructor is an ID or a name
+        instructorName = teacherMap.get(reg.course.instructor) || reg.course.instructor;
+      }
+    }
+    // If hasSectionSpecificInstructors is true but no match found, instructorName remains empty (TBA)
 
     return {
       id: reg._id,
@@ -680,7 +730,7 @@ exports.getRegistrationStatus = catchAsyncError(async (req, res, next) => {
         courseName: reg.course.courseName,
         credits: reg.course.credits,
         department: reg.course.department,
-        instructor: reg.course.instructor || '',
+        instructor: instructorName || '',
         schedule: reg.course.schedule || { days: [], startTime: '', endTime: '' },
         seats: {
           total: totalSeats,
