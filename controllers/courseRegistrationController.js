@@ -123,9 +123,11 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
 
   // Get student's section and semester if logged in
   let studentSemester = null;
+  let studentSectionName = null;
   if (req.student) {
     const student = await Student.findById(req.student._id).select('section');
     if (student && student.section) {
+      studentSectionName = student.section;
       const studentSection = await Section.findOne({ 
         sectionName: student.section,
         status: 'active'
@@ -224,9 +226,21 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       }
     });
 
+    // Filter sections based on student type
+    // Regular students can only see their registered section
+    // Irregular students can see all sections
+    const isRegular = studentSemester === course.semester;
+    let filteredSections = sections;
+    if (isRegular && studentSectionName) {
+      // Regular students can only see their own section
+      filteredSections = sections.filter(section => 
+        section.sectionName.toUpperCase() === studentSectionName.toUpperCase()
+      );
+    }
+    // Irregular students see all sections (no filtering needed)
+
     // Build sections array with seat information
-    const sectionsWithSeats = sections.map(section => {
-      const isRegular = studentSemester === course.semester;
+    const sectionsWithSeats = filteredSections.map(section => {
       const sectionId = section._id.toString();
       const courseIdStr = course._id.toString();
       
@@ -372,6 +386,14 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
 
     // Check if student is regular or irregular for this course
     const isRegular = studentSemester === course.semester;
+    
+    // For regular students, validate they can only register in their registered section
+    if (isRegular && student && student.section) {
+      if (selectedSection.sectionName.toUpperCase() !== student.section.toUpperCase()) {
+        return next(new ErrorHandler('Regular students can only register in their registered section', 400));
+      }
+    }
+    // Irregular students can register in any section (no additional validation needed)
     
     // Count regular and irregular students in this section for this course
     const registrations = await CourseRegistration.find({
