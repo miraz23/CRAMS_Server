@@ -236,7 +236,7 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
 
 // Get all courses with optional search and filter
 exports.getCourses = catchAsyncError(async (req, res, next) => {
-  const { search, department, status } = req.query;
+  const { search, department, status, semester } = req.query;
 
   // Build query
   const query = {};
@@ -259,6 +259,11 @@ exports.getCourses = catchAsyncError(async (req, res, next) => {
     query.status = status;
   }
 
+  // Filter by semester
+  if (semester) {
+    query.semester = semester;
+  }
+
   const courses = await Course.find(query).sort({ createdAt: -1 });
 
   const courseData = courses.map((course) => ({
@@ -272,6 +277,7 @@ exports.getCourses = catchAsyncError(async (req, res, next) => {
     instructorSections: course.instructorSections || [],
     semester: course.semester,
     status: course.status,
+    schedule: course.schedule || { days: [], startTime: '', endTime: '' },
   }));
 
   res.status(200).json({
@@ -328,6 +334,7 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     status,
     instructors,
     instructorSections,
+    schedule,
   } = req.body;
 
   const fieldsProvided = [
@@ -340,6 +347,7 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     status,
     instructors,
     instructorSections,
+    schedule,
   ].some((field) => field !== undefined);
 
   if (!fieldsProvided) {
@@ -414,6 +422,84 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
       return next(new ErrorHandler('Invalid status value', 400));
     }
     course.status = status;
+  }
+
+  if (schedule !== undefined) {
+    if (typeof schedule !== 'object' || schedule === null) {
+      return next(new ErrorHandler('Invalid schedule value', 400));
+    }
+    
+    const allowedDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    // Handle new daySchedules structure (per-day scheduling)
+    if (schedule.daySchedules !== undefined) {
+      if (!Array.isArray(schedule.daySchedules)) {
+        return next(new ErrorHandler('Schedule daySchedules must be an array', 400));
+      }
+      
+      // Validate and set daySchedules
+      const validatedDaySchedules = schedule.daySchedules
+        .filter(item => item && item.day && allowedDays.includes(item.day))
+        .map(item => ({
+          day: item.day,
+          startTime: (item.startTime || '').toString().trim(),
+          endTime: (item.endTime || '').toString().trim(),
+        }));
+      
+      course.schedule.daySchedules = validatedDaySchedules;
+      
+      // Also update legacy fields for backward compatibility
+      course.schedule.days = validatedDaySchedules.map(item => item.day);
+      // Use first day's time for legacy fields (or empty if no schedules)
+      if (validatedDaySchedules.length > 0) {
+        course.schedule.startTime = validatedDaySchedules[0].startTime || '';
+        course.schedule.endTime = validatedDaySchedules[0].endTime || '';
+      } else {
+        course.schedule.startTime = '';
+        course.schedule.endTime = '';
+      }
+    } else {
+      // Handle legacy structure (single time for all days)
+      if (schedule.days !== undefined) {
+        if (!Array.isArray(schedule.days)) {
+          return next(new ErrorHandler('Schedule days must be an array', 400));
+        }
+        const invalidDays = schedule.days.filter(day => !allowedDays.includes(day));
+        if (invalidDays.length > 0) {
+          return next(new ErrorHandler(`Invalid days: ${invalidDays.join(', ')}`, 400));
+        }
+        course.schedule.days = schedule.days;
+        
+        // Convert legacy structure to new daySchedules format
+        const startTime = (schedule.startTime || '').toString().trim();
+        const endTime = (schedule.endTime || '').toString().trim();
+        course.schedule.daySchedules = schedule.days.map(day => ({
+          day,
+          startTime,
+          endTime,
+        }));
+      }
+      
+      if (schedule.startTime !== undefined) {
+        course.schedule.startTime = schedule.startTime.toString().trim();
+        // Update daySchedules if they exist
+        if (course.schedule.daySchedules && course.schedule.daySchedules.length > 0) {
+          course.schedule.daySchedules.forEach(item => {
+            item.startTime = course.schedule.startTime;
+          });
+        }
+      }
+      
+      if (schedule.endTime !== undefined) {
+        course.schedule.endTime = schedule.endTime.toString().trim();
+        // Update daySchedules if they exist
+        if (course.schedule.daySchedules && course.schedule.daySchedules.length > 0) {
+          course.schedule.daySchedules.forEach(item => {
+            item.endTime = course.schedule.endTime;
+          });
+        }
+      }
+    }
   }
 
   await course.save();
@@ -603,6 +689,14 @@ exports.getSingleSection = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Section not found', 404));
   }
 
+  // Convert courseSchedules Map to object for JSON response
+  const courseSchedulesObj = {};
+  if (section.courseSchedules && section.courseSchedules instanceof Map) {
+    section.courseSchedules.forEach((schedule, courseId) => {
+      courseSchedulesObj[courseId] = schedule;
+    });
+  }
+
   res.status(200).json({
     success: true,
     message: 'Section fetched successfully',
@@ -622,6 +716,7 @@ exports.getSingleSection = catchAsyncError(async (req, res, next) => {
       acrName: section.acrName,
       acrContact: section.acrContact,
       status: section.status,
+      courseSchedules: courseSchedulesObj,
       createdAt: section.createdAt,
     },
   });
@@ -736,6 +831,104 @@ exports.updateSection = catchAsyncError(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Section updated successfully',
+  });
+});
+
+// Update section-specific course schedule
+exports.updateSectionCourseSchedule = catchAsyncError(async (req, res, next) => {
+  const { sectionId, courseId } = req.params;
+  const { schedule } = req.body;
+
+  if (!sectionId || !courseId) {
+    return next(new ErrorHandler('Section ID and Course ID are required', 400));
+  }
+
+  const section = await Section.findById(sectionId);
+  if (!section) {
+    return next(new ErrorHandler('Section not found', 404));
+  }
+
+  // Verify course exists
+  const Course = require('../models/courseModel');
+  const course = await Course.findById(courseId);
+  if (!course) {
+    return next(new ErrorHandler('Course not found', 404));
+  }
+
+  if (!schedule || typeof schedule !== 'object') {
+    return next(new ErrorHandler('Invalid schedule data', 400));
+  }
+
+  const allowedDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  // Handle new daySchedules structure
+  if (schedule.daySchedules !== undefined) {
+    if (!Array.isArray(schedule.daySchedules)) {
+      return next(new ErrorHandler('Schedule daySchedules must be an array', 400));
+    }
+    
+    const validatedDaySchedules = schedule.daySchedules
+      .filter(item => item && item.day && allowedDays.includes(item.day))
+      .map(item => ({
+        day: item.day,
+        startTime: (item.startTime || '').toString().trim(),
+        endTime: (item.endTime || '').toString().trim(),
+        room: (item.room || '').toString().trim(),
+      }));
+    
+    // Initialize courseSchedules Map if it doesn't exist
+    if (!section.courseSchedules) {
+      section.courseSchedules = new Map();
+    }
+    
+    // Store schedule for this course in this section
+    section.courseSchedules.set(courseId, {
+      daySchedules: validatedDaySchedules,
+      // Also store legacy fields for backward compatibility
+      days: validatedDaySchedules.map(item => item.day),
+      startTime: validatedDaySchedules.length > 0 ? validatedDaySchedules[0].startTime : '',
+      endTime: validatedDaySchedules.length > 0 ? validatedDaySchedules[0].endTime : '',
+      room: validatedDaySchedules.length > 0 ? validatedDaySchedules[0].room : '',
+    });
+  } else {
+    // Handle legacy structure
+    if (schedule.days && Array.isArray(schedule.days)) {
+      const invalidDays = schedule.days.filter(day => !allowedDays.includes(day));
+      if (invalidDays.length > 0) {
+        return next(new ErrorHandler(`Invalid days: ${invalidDays.join(', ')}`, 400));
+      }
+      
+      if (!section.courseSchedules) {
+        section.courseSchedules = new Map();
+      }
+      
+      const startTime = (schedule.startTime || '').toString().trim();
+      const endTime = (schedule.endTime || '').toString().trim();
+      const room = (schedule.room || '').toString().trim();
+      
+      section.courseSchedules.set(courseId, {
+        days: schedule.days,
+        startTime,
+        endTime,
+        room,
+        // Convert to new format
+        daySchedules: schedule.days.map(day => ({
+          day,
+          startTime,
+          endTime,
+          room,
+        })),
+      });
+    } else {
+      return next(new ErrorHandler('Invalid schedule format', 400));
+    }
+  }
+
+  await section.save();
+
+  res.status(200).json({
+    success: true,
+    message: 'Section course schedule updated successfully',
   });
 });
 

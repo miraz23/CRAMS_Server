@@ -108,6 +108,14 @@ router.route('/sections/:id')
     adminController.deleteSection
   );
 
+// Update section-specific course schedule
+router.route('/sections/:sectionId/courses/:courseId/schedule')
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.updateSectionCourseSchedule
+  );
+
 // User Management (Admin Dashboard)
 router.route('/user-management/overview')
   .get(

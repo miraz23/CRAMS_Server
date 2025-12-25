@@ -45,6 +45,25 @@ const courseSchema = new mongoose.Schema({
     sections: [{ type: String, trim: true }],
   }],
   schedule: {
+    // New structure: per-day schedules
+    daySchedules: [{
+      day: {
+        type: String,
+        enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        required: true,
+      },
+      startTime: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+      endTime: {
+        type: String,
+        trim: true,
+        default: '',
+      },
+    }],
+    // Legacy fields for backward compatibility
     days: [{
       type: String,
       enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],

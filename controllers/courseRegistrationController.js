@@ -8,7 +8,46 @@ const catchAsyncError = require('../middleware/CatchAsyncErrors');
 
 // Helper function to check time conflicts
 const checkTimeConflict = (schedule1, schedule2) => {
-  if (!schedule1 || !schedule2 || !schedule1.days || !schedule2.days) {
+  if (!schedule1 || !schedule2) {
+    return false;
+  }
+
+  // Parse time strings (format: "10:00 AM" or "2:00 PM")
+  const parseTime = (timeStr) => {
+    if (!timeStr) return Infinity;
+    const [time, period] = timeStr.split(' ');
+    const [hours, minutes] = time.split(':');
+    let hour24 = parseInt(hours);
+    if (period === 'PM' && hour24 !== 12) hour24 += 12;
+    if (period === 'AM' && hour24 === 12) hour24 = 0;
+    return hour24 * 60 + parseInt(minutes || 0);
+  };
+
+  // Handle new daySchedules structure (per-day scheduling)
+  if (schedule1.daySchedules && Array.isArray(schedule1.daySchedules) && schedule1.daySchedules.length > 0 &&
+      schedule2.daySchedules && Array.isArray(schedule2.daySchedules) && schedule2.daySchedules.length > 0) {
+    
+    // Check for conflicts on each day
+    for (const ds1 of schedule1.daySchedules) {
+      for (const ds2 of schedule2.daySchedules) {
+        if (ds1.day === ds2.day) {
+          const start1 = parseTime(ds1.startTime);
+          const end1 = parseTime(ds1.endTime);
+          const start2 = parseTime(ds2.startTime);
+          const end2 = parseTime(ds2.endTime);
+          
+          // Check if time ranges overlap
+          if (!(end1 <= start2 || end2 <= start1)) {
+            return true; // Conflict found
+          }
+        }
+      }
+    }
+    return false; // No conflicts found
+  }
+
+  // Handle legacy structure (single time for all days)
+  if (!schedule1.days || !schedule2.days) {
     return false;
   }
 
@@ -17,16 +56,6 @@ const checkTimeConflict = (schedule1, schedule2) => {
   if (commonDays.length === 0) {
     return false;
   }
-
-  // Parse time strings (format: "10:00 AM" or "2:00 PM")
-  const parseTime = (timeStr) => {
-    const [time, period] = timeStr.split(' ');
-    const [hours, minutes] = time.split(':');
-    let hour24 = parseInt(hours);
-    if (period === 'PM' && hour24 !== 12) hour24 += 12;
-    if (period === 'AM' && hour24 === 12) hour24 = 0;
-    return hour24 * 60 + parseInt(minutes || 0);
-  };
 
   const start1 = parseTime(schedule1.startTime);
   const end1 = parseTime(schedule1.endTime);
@@ -172,28 +201,81 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     // Get irregular count for this course
     const courseIrregularMap = irregularCountMap.get(courseIdStr) || new Map();
 
+    // Count regular students enrolled in each section for this course
+    const regularCountMap = new Map();
+    const registrationsForCourse = await CourseRegistration.find({
+      course: course._id,
+      status: { $in: ['selected', 'pending', 'approved'] }
+    }).populate('student section');
+
+    registrationsForCourse.forEach(reg => {
+      if (reg.section && reg.student && reg.student.section) {
+        const sectionId = reg.section._id.toString();
+        // Check if student is regular (same semester as course)
+        const studentSectionName = reg.student.section;
+        const studentSectionSemester = sectionSemesterMap.get(studentSectionName);
+        
+        // If student's section semester matches course semester, they're regular
+        if (studentSectionSemester === course.semester) {
+          // This is a regular student in this section
+          const currentCount = regularCountMap.get(sectionId) || 0;
+          regularCountMap.set(sectionId, currentCount + 1);
+        }
+      }
+    });
+
     // Build sections array with seat information
     const sectionsWithSeats = sections.map(section => {
       const isRegular = studentSemester === course.semester;
       const sectionId = section._id.toString();
+      const courseIdStr = course._id.toString();
       
-      let availableSeatsForSection;
-      if (isRegular) {
-        // Regular students see: number of students in that section
-        availableSeatsForSection = section.enrolledStudents || 0;
-      } else {
-        // Irregular students see: maximum irregular seats allowed minus already registered
-        const maxIrregular = section.maxIrregularStudents || 0;
-        const registeredIrregular = courseIrregularMap.get(sectionId) || 0;
-        availableSeatsForSection = Math.max(0, maxIrregular - registeredIrregular);
+      // Count regular students enrolled in this section for this course
+      const enrolledRegular = regularCountMap.get(sectionId) || 0;
+      const enrolledIrregular = courseIrregularMap.get(sectionId) || 0;
+      
+      // Calculate available seats
+      // Use totalCapacity as fallback if regularStudents is not set
+      // For regular students: use regularStudents, fallback to totalCapacity if regularStudents is 0
+      // For irregular students: use maxIrregularStudents
+      const maxRegular = section.regularStudents > 0 ? section.regularStudents : (section.totalCapacity || 0);
+      const maxIrregular = section.maxIrregularStudents || 0;
+      
+      const availableRegular = Math.max(0, maxRegular - enrolledRegular);
+      const availableIrregular = Math.max(0, maxIrregular - enrolledIrregular);
+
+      // Get section-specific schedule for this course
+      let sectionSchedule = null;
+      if (section.courseSchedules && section.courseSchedules instanceof Map) {
+        sectionSchedule = section.courseSchedules.get(courseIdStr);
+      } else if (section.courseSchedules && typeof section.courseSchedules === 'object') {
+        sectionSchedule = section.courseSchedules[courseIdStr];
       }
+      
+      // Fall back to course default schedule if no section-specific schedule
+      const schedule = sectionSchedule || course.schedule || { days: [], startTime: '', endTime: '', daySchedules: [] };
 
       return {
         id: section._id.toString(),
         sectionName: section.sectionName,
-        availableSeats: availableSeatsForSection,
-        maxIrregularSeats: section.maxIrregularStudents || 0,
+        // Regular seats info
+        regularSeats: {
+          enrolled: enrolledRegular,
+          available: availableRegular,
+          max: maxRegular,
+        },
+        // Irregular seats info
+        irregularSeats: {
+          enrolled: enrolledIrregular,
+          available: availableIrregular,
+          max: maxIrregular,
+        },
+        // Legacy fields for backward compatibility
+        availableSeats: isRegular ? availableRegular : availableIrregular,
+        maxIrregularSeats: maxIrregular,
         enrolledStudents: section.enrolledStudents || 0,
+        // Section-specific schedule
+        schedule: schedule,
       };
     });
 
@@ -206,6 +288,7 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       instructor: course.instructor || '',
       instructors: course.instructors || [],
       instructorNames: instructorNames.length > 0 ? instructorNames : (course.instructor ? [course.instructor] : []),
+      instructorSections: course.instructorSections || [], // Include instructor-section mapping
       schedule: course.schedule || { days: [], startTime: '', endTime: '' },
       prerequisite: course.prerequisite || '',
       seats: {
@@ -263,6 +346,16 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
 
+  // Check if course has sections - if so, sectionId is required
+  const sectionsForCourse = await Section.find({
+    semester: course.semester,
+    status: 'active'
+  });
+  
+  if (sectionsForCourse.length > 0 && !sectionId) {
+    return next(new ErrorHandler('Section selection is required for this course', 400));
+  }
+
   // Validate section if provided
   let selectedSection = null;
   if (sectionId) {
@@ -280,41 +373,42 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     // Check if student is regular or irregular for this course
     const isRegular = studentSemester === course.semester;
     
-    if (isRegular) {
-      // For regular students, check if section has capacity
-      // Regular students see enrolledStudents as available seats
-      // But we need to check if there's actual capacity
-      // For now, we'll allow if section is active
-    } else {
-      // For irregular students, check maxIrregularStudents
-      // Count how many irregular students are already registered in this section for this course
-      const irregularRegistrations = await CourseRegistration.countDocuments({
-        course: courseId,
-        section: sectionId,
-        status: { $in: ['selected', 'pending', 'approved'] }
-      }).populate('student');
+    // Count regular and irregular students in this section for this course
+    const registrations = await CourseRegistration.find({
+      course: courseId,
+      section: sectionId,
+      status: { $in: ['selected', 'pending', 'approved'] }
+    }).populate('student');
 
-      // Get actual count of irregular students in this section for this course
-      let irregularCount = 0;
-      const registrations = await CourseRegistration.find({
-        course: courseId,
-        section: sectionId,
-        status: { $in: ['selected', 'pending', 'approved'] }
-      }).populate('student');
+    let enrolledRegular = 0;
+    let enrolledIrregular = 0;
 
-      for (const reg of registrations) {
-        if (reg.student && reg.student.section) {
-          const regStudentSection = await Section.findOne({ 
-            sectionName: reg.student.section,
-            status: 'active'
-          });
-          if (regStudentSection && regStudentSection.semester !== course.semester) {
-            irregularCount++;
+    for (const reg of registrations) {
+      if (reg.student && reg.student.section) {
+        const regStudentSection = await Section.findOne({ 
+          sectionName: reg.student.section,
+          status: 'active'
+        });
+        if (regStudentSection) {
+          if (regStudentSection.semester === course.semester) {
+            enrolledRegular++;
+          } else {
+            enrolledIrregular++;
           }
         }
       }
+    }
 
-      if (irregularCount >= selectedSection.maxIrregularStudents) {
+    if (isRegular) {
+      // For regular students, check if section has regular capacity
+      const maxRegular = selectedSection.regularStudents || 0;
+      if (enrolledRegular >= maxRegular) {
+        return next(new ErrorHandler('No regular seats available in this section', 400));
+      }
+    } else {
+      // For irregular students, check maxIrregularStudents
+      const maxIrregular = selectedSection.maxIrregularStudents || 0;
+      if (enrolledIrregular >= maxIrregular) {
         return next(new ErrorHandler('No irregular seats available in this section', 400));
       }
     }
@@ -343,12 +437,7 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
 
-  // Check seat availability (general check)
-  const enrolledCount = course.enrolledStudents ? course.enrolledStudents.length : 0;
-  const totalSeats = course.regularSeats + course.irregularSeats;
-  if (enrolledCount >= totalSeats) {
-    return next(new ErrorHandler('No seats available for this course', 400));
-  }
+  // Note: Seat availability is now checked per section above, so we don't need the general check here
 
   // Check prerequisites
   if (course.prerequisite) {

@@ -136,7 +136,24 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
     query.status = { $in: statusFilter };
   }
 
-  const registrations = await CourseRegistration.find(query).populate('course');
+  const registrations = await CourseRegistration.find(query)
+    .populate('course')
+    .populate('section');
+  
+  // Get student's section to access section-specific schedules
+  const Student = require('../models/studentModel');
+  const student = await Student.findById(req.student._id).populate('section');
+  const studentSection = student?.section;
+
+  // Fetch all teachers to map instructor IDs to names
+  const Teacher = require('../models/teacherModel');
+  const teachers = await Teacher.find({}, 'teacherId name');
+  const teacherMap = new Map();
+  teachers.forEach(teacher => {
+    if (teacher.teacherId) {
+      teacherMap.set(teacher.teacherId, teacher.name);
+    }
+  });
 
   // Helper to sort time strings like "10:00 AM"
   const parseTime = (timeStr) => {
@@ -156,7 +173,63 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
     if (!reg.course) return;
 
     const course = reg.course;
-    const courseSchedule = course.schedule || { days: [], startTime: '', endTime: '' };
+    const courseId = course._id.toString();
+    
+    // Check for section-specific schedule first
+    let courseSchedule = null;
+    const sectionToCheck = reg.section || studentSection;
+    
+    if (sectionToCheck && sectionToCheck.courseSchedules && sectionToCheck.courseSchedules instanceof Map) {
+      const sectionSchedule = sectionToCheck.courseSchedules.get(courseId);
+      if (sectionSchedule) {
+        courseSchedule = sectionSchedule;
+      }
+    } else if (sectionToCheck && sectionToCheck.courseSchedules && typeof sectionToCheck.courseSchedules === 'object') {
+      // Handle case where courseSchedules is already an object (from JSON)
+      const sectionSchedule = sectionToCheck.courseSchedules[courseId];
+      if (sectionSchedule) {
+        courseSchedule = sectionSchedule;
+      }
+    }
+    
+    // Fall back to course default schedule if no section-specific schedule found
+    if (!courseSchedule) {
+      courseSchedule = course.schedule || { days: [], startTime: '', endTime: '', daySchedules: [] };
+    }
+
+    // Resolve instructor name(s)
+    let instructorName = '';
+    const sectionToCheckForInstructor = reg.section || studentSection;
+    const sectionName = sectionToCheckForInstructor?.sectionName;
+
+    // Check if course uses section-specific instructor assignments
+    const hasSectionSpecificInstructors = course.instructorSections && 
+      Array.isArray(course.instructorSections) && 
+      course.instructorSections.length > 0;
+
+    // First, try to find section-specific instructor
+    if (sectionName && hasSectionSpecificInstructors) {
+      const sectionInstructor = course.instructorSections.find(instSec => 
+        instSec.sections && instSec.sections.includes(sectionName)
+      );
+      
+      if (sectionInstructor && sectionInstructor.instructorId) {
+        instructorName = teacherMap.get(sectionInstructor.instructorId) || sectionInstructor.instructorId;
+      }
+      // If section-specific assignments exist but this section has no instructor, leave as empty (will show TBA)
+    } else if (!hasSectionSpecificInstructors) {
+      // Only use general instructors if section-specific assignments are NOT being used
+      if (Array.isArray(course.instructors) && course.instructors.length > 0) {
+        const instructorNames = course.instructors
+          .map(id => teacherMap.get(id) || id)
+          .filter(Boolean);
+        instructorName = instructorNames.length > 0 ? instructorNames.join(', ') : '';
+      } else if (course.instructor) {
+        // Check if instructor is an ID or a name
+        instructorName = teacherMap.get(course.instructor) || course.instructor;
+      }
+    }
+    // If hasSectionSpecificInstructors is true but no match found, instructorName remains empty (TBA)
 
     const courseInfo = {
       id: course._id,
@@ -164,7 +237,8 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
       courseCode: course.courseCode,
       courseName: course.courseName,
       credits: course.credits,
-      instructor: course.instructor || '',
+      instructor: instructorName || '',
+      prerequisite: course.prerequisite || '',
       schedule: courseSchedule,
       semester: reg.semester,
       status: reg.status,
@@ -172,18 +246,38 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
 
     courses.push(courseInfo);
 
-    (courseSchedule.days || []).forEach((day) => {
-      if (!daysTemplate[day]) return;
-      daysTemplate[day].push({
-        courseId: course._id,
-        courseCode: course.courseCode,
-        courseName: course.courseName,
-        instructor: course.instructor || '',
-        startTime: courseSchedule.startTime || '',
-        endTime: courseSchedule.endTime || '',
-        status: reg.status,
+    // Handle new daySchedules structure (per-day scheduling)
+    if (courseSchedule.daySchedules && Array.isArray(courseSchedule.daySchedules) && courseSchedule.daySchedules.length > 0) {
+      courseSchedule.daySchedules.forEach((daySchedule) => {
+        const day = daySchedule.day;
+        if (!daysTemplate[day]) return;
+        daysTemplate[day].push({
+          courseId: course._id,
+          courseCode: course.courseCode,
+          courseName: course.courseName,
+          instructor: instructorName || '',
+          startTime: daySchedule.startTime || '',
+          endTime: daySchedule.endTime || '',
+          room: daySchedule.room || '',
+          status: reg.status,
+        });
       });
-    });
+    } else {
+      // Handle legacy structure (single time for all days)
+      (courseSchedule.days || []).forEach((day) => {
+        if (!daysTemplate[day]) return;
+        daysTemplate[day].push({
+          courseId: course._id,
+          courseCode: course.courseCode,
+          courseName: course.courseName,
+          instructor: instructorName || '',
+          startTime: courseSchedule.startTime || '',
+          endTime: courseSchedule.endTime || '',
+          room: courseSchedule.room || '',
+          status: reg.status,
+        });
+      });
+    }
   });
 
   // Sort classes within each day by start time and drop empty days

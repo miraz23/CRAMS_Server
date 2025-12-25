@@ -79,6 +79,50 @@ const sectionSchema = new mongoose.Schema(
       enum: ['active', 'inactive'],
       default: 'active',
     },
+    // Section-specific course schedules
+    // Maps courseId to schedule for this section
+    courseSchedules: {
+      type: Map,
+      of: {
+        // New structure: per-day schedules
+        daySchedules: [{
+          day: {
+            type: String,
+            enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+            required: true,
+          },
+          startTime: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+          endTime: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+          room: {
+            type: String,
+            trim: true,
+            default: '',
+          },
+        }],
+        // Legacy fields for backward compatibility
+        days: [{
+          type: String,
+          enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+        }],
+        startTime: {
+          type: String,
+          trim: true,
+        },
+        endTime: {
+          type: String,
+          trim: true,
+        },
+      },
+      default: {},
+    },
   },
   {
     timestamps: true,
