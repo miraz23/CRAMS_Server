@@ -19,6 +19,10 @@ router.route('/logout')
 router.route('/schedule')
   .get(auth.checkStudentAuthentication, studentController.getStudentSchedule);
 
+// get authenticated student's routine (all courses in section)
+router.route('/routine')
+  .get(auth.checkStudentAuthentication, studentController.getStudentRoutine);
+
 // get single student details
 router.route('/:id')
   .get(studentController.getSingleStudentDetails)
