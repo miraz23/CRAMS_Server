@@ -372,24 +372,7 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
           }
         }
 
-        // Check seat availability - need to fetch fresh course data for accurate seat count
-        const enrolledCount = courseData.enrolledStudents ? courseData.enrolledStudents.length : 0;
-        const totalSeats = (courseData.regularSeats || 0) + (courseData.irregularSeats || 0);
-        const availableSeats = Math.max(0, totalSeats - enrolledCount);
-
-        if (availableSeats <= 3 && availableSeats > 0) {
-          issues.push({
-            type: 'seats',
-            message: `Only ${availableSeats} seat${availableSeats !== 1 ? 's' : ''} left`,
-          });
-          // Note: Low seats might not be considered a critical issue, but we'll include it
-        } else if (availableSeats === 0) {
-          issues.push({
-            type: 'seats',
-            message: 'No seats available',
-          });
-          studentData.hasIssues = true;
-        }
+        // Note: Seat availability is already checked during course registration, so we don't check it here
 
         return {
           registrationId: reg._id,
@@ -547,6 +530,28 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     registrationQuery.semester = semester;
   }
 
+  // Get section info for students to determine their semester FIRST
+  // This ensures we use the student's actual semester, not the course semester
+  const studentSections = await Section.find({ 
+    sectionName: { $in: sectionNames },
+    status: 'active'
+  });
+  
+  const sectionSemesterMap = {};
+  studentSections.forEach(section => {
+    sectionSemesterMap[section.sectionName] = section.semester;
+  });
+
+  // Create a map of student ID to their actual semester from their section
+  const studentSemesterMap = {};
+  students.forEach((student) => {
+    const studentSection = student.section ? student.section.toUpperCase() : null;
+    const semesterFromSection = studentSection && sectionSemesterMap[studentSection] 
+      ? sectionSemesterMap[studentSection] 
+      : null;
+    studentSemesterMap[student._id.toString()] = semesterFromSection;
+  });
+
   // Get all course registrations for students in advisor's sections
   const registrations = await CourseRegistration.find(registrationQuery)
     .populate('student')
@@ -561,6 +566,9 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     const studentId = reg.student._id.toString();
     
     if (!studentMap.has(studentId)) {
+      // Use the student's actual semester from their section, not from course registrations
+      const studentSemester = studentSemesterMap[studentId] || null;
+      
       studentMap.set(studentId, {
         _id: reg.student._id,
         studentId: reg.student.studentId,
@@ -572,7 +580,7 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
         registrations: [],
         pendingCount: 0,
         totalCredits: 0,
-        currentSemester: null,
+        currentSemester: studentSemester, // Use student's actual semester from section
       });
     }
     
@@ -584,32 +592,15 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
       student.pendingCount++;
     }
     
-    // Track current semester (most recent)
-    if (reg.semester && (!student.currentSemester || reg.semester > student.currentSemester)) {
-      student.currentSemester = reg.semester;
-    }
-  });
-
-  // Include students who don't have any course registrations yet
-  // Get section info for students to determine their semester
-  const studentSections = await Section.find({ 
-    sectionName: { $in: sectionNames },
-    status: 'active'
-  });
-  
-  const sectionSemesterMap = {};
-  studentSections.forEach(section => {
-    sectionSemesterMap[section.sectionName] = section.semester;
+    // DO NOT update semester based on course registrations
+    // The student's semester should remain their actual semester from their section
   });
 
   students.forEach((student) => {
     const studentId = student._id.toString();
     if (!studentMap.has(studentId)) {
-      // Get semester from student's section
-      const studentSection = student.section ? student.section.toUpperCase() : null;
-      const semesterFromSection = studentSection && sectionSemesterMap[studentSection] 
-        ? sectionSemesterMap[studentSection] 
-        : null;
+      // Get semester from student's section (already mapped above)
+      const studentSemester = studentSemesterMap[studentId] || null;
       
       studentMap.set(studentId, {
         _id: student._id,
@@ -622,7 +613,7 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
         registrations: [],
         pendingCount: 0,
         totalCredits: 0,
-        currentSemester: semesterFromSection,
+        currentSemester: studentSemester,
       });
     }
   });
