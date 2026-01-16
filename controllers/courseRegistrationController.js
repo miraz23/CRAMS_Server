@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Course = require('../models/courseModel');
 const CourseRegistration = require('../models/courseRegistrationModel');
 const Student = require('../models/studentModel');
@@ -118,6 +119,10 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       if (['approved', 'pending', 'rejected', 'selected'].includes(status)) {
         registeredCourseIds.push(courseId);
         registeredCourseStatuses[courseId] = status;
+        // Also track section for approved/pending courses so we can show schedule and seats
+        if ((status === 'approved' || status === 'pending') && reg.section) {
+          selectedSections[courseId] = reg.section._id.toString();
+        }
       }
       
       // Track approved courses (these are considered as passed and clear prerequisites)
@@ -361,7 +366,18 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
 // Add course to selection
 exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   const { courseId, sectionId } = req.body;
+  
+  // Validate that student is authenticated and has a valid ID
+  if (!req.student || !req.student._id) {
+    return next(new ErrorHandler('Student authentication required', 401));
+  }
+  
   const studentId = req.student._id;
+  
+  // Validate studentId is a valid ObjectId
+  if (!studentId || !mongoose.Types.ObjectId.isValid(studentId)) {
+    return next(new ErrorHandler('Invalid student ID', 400));
+  }
 
   if (!courseId) {
     return next(new ErrorHandler('Course ID is required', 400));
@@ -376,8 +392,11 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Course is not available', 400));
   }
 
-  // Get student's section and semester
+  // Get student's section and semester - verify student exists
   const student = await Student.findById(studentId).select('section');
+  if (!student) {
+    return next(new ErrorHandler('Student not found', 404));
+  }
   let studentSemester = null;
   if (student && student.section) {
     const studentSection = await Section.findOne({ 
@@ -520,7 +539,16 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   }
 
   // Create or update registration
+  // Double-check that studentId is valid and matches the authenticated student
+  if (!mongoose.Types.ObjectId.isValid(studentId) || studentId.toString() !== req.student._id.toString()) {
+    return next(new ErrorHandler('Invalid student ID for registration', 400));
+  }
+  
   if (existingRegistration) {
+    // Verify the existing registration belongs to this student
+    if (existingRegistration.student.toString() !== studentId.toString()) {
+      return next(new ErrorHandler('Registration does not belong to this student', 403));
+    }
     existingRegistration.status = 'selected';
     existingRegistration.submittedForApproval = false;
     if (selectedSection) {
@@ -528,8 +556,9 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
     await existingRegistration.save();
   } else {
+    // Explicitly use the authenticated student's ID to prevent any potential issues
     await CourseRegistration.create({
-      student: studentId,
+      student: req.student._id, // Use req.student._id directly to ensure correctness
       course: courseId,
       semester: course.semester,
       status: 'selected',
