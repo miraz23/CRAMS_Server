@@ -96,6 +96,7 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
   let registeredCourseIds = []; // approved, pending, rejected courses
   let registeredCourseStatuses = {}; // Map of courseId -> status
   let selectedSections = {}; // Map of courseId -> sectionId
+  let approvedCourseCodes = []; // Course codes that are approved (passed) by advisor
   
   if (req.student) {
     const allRegistrations = await CourseRegistration.find({
@@ -117,6 +118,11 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       if (['approved', 'pending', 'rejected', 'selected'].includes(status)) {
         registeredCourseIds.push(courseId);
         registeredCourseStatuses[courseId] = status;
+      }
+      
+      // Track approved courses (these are considered as passed and clear prerequisites)
+      if (status === 'approved' && reg.course && reg.course.courseCode) {
+        approvedCourseCodes.push(reg.course.courseCode);
       }
     });
   }
@@ -293,6 +299,27 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       };
     });
 
+    // Check if prerequisites are clear
+    // Prerequisites are clear if:
+    // 1. Course has no prerequisites, OR
+    // 2. All prerequisite courses have been approved by advisor (status = 'approved')
+    let prerequisiteClear = true;
+    let missingPrerequisites = [];
+    
+    if (course.prerequisite && req.student) {
+      const prerequisiteCodes = course.prerequisite.split(',').map(code => code.trim()).filter(Boolean);
+      
+      if (prerequisiteCodes.length > 0) {
+        // Check if all prerequisites are met (approved courses)
+        const unmetPrerequisites = prerequisiteCodes.filter(code => !approvedCourseCodes.includes(code));
+        
+        if (unmetPrerequisites.length > 0) {
+          prerequisiteClear = false;
+          missingPrerequisites = unmetPrerequisites;
+        }
+      }
+    }
+
     return {
       id: course._id,
       courseCode: course.courseCode,
@@ -305,6 +332,8 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       instructorSections: course.instructorSections || [], // Include instructor-section mapping
       schedule: course.schedule || { days: [], startTime: '', endTime: '' },
       prerequisite: course.prerequisite || '',
+      prerequisiteClear: prerequisiteClear, // New field: indicates if prerequisites are clear
+      missingPrerequisites: missingPrerequisites, // New field: list of missing prerequisite course codes
       seats: {
         total: totalSeats,
         available: availableSeats,
@@ -462,20 +491,31 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   // Note: Seat availability is now checked per section above, so we don't need the general check here
 
   // Check prerequisites
+  // Prerequisites are clear only if the prerequisite courses have been approved by advisor
+  // Approved courses are considered as passed and clear prerequisites for other courses
   if (course.prerequisite) {
-    const prerequisiteCodes = course.prerequisite.split(',').map(code => code.trim());
-    const studentRegistrations = await CourseRegistration.find({
-      student: studentId,
-      status: { $in: ['approved', 'selected', 'pending'] },
-    }).populate('course');
+    const prerequisiteCodes = course.prerequisite.split(',').map(code => code.trim()).filter(Boolean);
+    
+    if (prerequisiteCodes.length > 0) {
+      // Get all approved courses (these are considered as passed)
+      const approvedRegistrations = await CourseRegistration.find({
+        student: studentId,
+        status: 'approved',
+      }).populate('course');
 
-    const completedCourses = studentRegistrations
-      .filter(reg => reg.status === 'approved')
-      .map(reg => reg.course.courseCode);
+      const approvedCourseCodes = approvedRegistrations
+        .map(reg => reg.course?.courseCode)
+        .filter(Boolean);
 
-    const hasPrerequisite = prerequisiteCodes.some(code => completedCourses.includes(code));
-    if (!hasPrerequisite) {
-      return next(new ErrorHandler(`Prerequisite not met: ${course.prerequisite}`, 400));
+      // Check if all prerequisites are met
+      const unmetPrerequisites = prerequisiteCodes.filter(code => !approvedCourseCodes.includes(code));
+      
+      if (unmetPrerequisites.length > 0) {
+        return next(new ErrorHandler(
+          `Prerequisites not clear. Missing prerequisites: ${unmetPrerequisites.join(', ')}. Only courses approved by advisor are considered as passed.`,
+          400
+        ));
+      }
     }
   }
 
