@@ -3,6 +3,7 @@ const ExtraCreditRequest = require('../models/extraCreditRequestModel');
 const Student = require('../models/studentModel');
 const Teacher = require('../models/teacherModel');
 const Section = require('../models/sectionModel');
+const CourseRegistration = require('../models/courseRegistrationModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 
@@ -83,6 +84,7 @@ exports.getMyExtraCreditRequests = catchAsyncError(async (req, res, next) => {
 // Advisor: Get pending extra credit requests for my students
 exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) => {
   const teacherId = req.teacher.teacherId;
+  const CREDIT_LIMIT = 26;
 
   // Find all sections assigned to this advisor
   const sections = await Section.find({
@@ -99,7 +101,9 @@ exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) =
   }
 
   // Get section names assigned to this advisor
-  const sectionNames = sections.map(s => s.sectionName ? s.sectionName.trim().toUpperCase() : null).filter(Boolean);
+  const sectionNames = sections
+    .map((s) => (s.sectionName ? s.sectionName.trim().toUpperCase() : null))
+    .filter(Boolean);
 
   // Get all students registered in advisor's sections
   const students = await Student.find({
@@ -114,7 +118,7 @@ exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) =
     });
   }
 
-  const studentIds = students.map(s => s._id);
+  const studentIds = students.map((s) => s._id);
 
   // Get pending extra credit requests for these students
   const requests = await ExtraCreditRequest.find({
@@ -124,10 +128,89 @@ exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) =
     .populate('student', 'studentId name email section')
     .sort({ createdAt: -1 });
 
+  if (requests.length === 0) {
+    return res.status(200).json({
+      success: true,
+      message: 'Pending extra credit requests fetched successfully',
+      data: [],
+    });
+  }
+
+  // Pre-compute credit summaries (approved vs selected) per student+semester
+  const studentObjectIds = [];
+  const semesters = new Set();
+
+  requests.forEach((reqDoc) => {
+    if (reqDoc.student && reqDoc.student._id) {
+      studentObjectIds.push(reqDoc.student._id);
+    } else if (reqDoc.student) {
+      studentObjectIds.push(reqDoc.student);
+    }
+    if (reqDoc.semester) {
+      semesters.add(reqDoc.semester);
+    }
+  });
+
+  const uniqueStudentIds = [...new Set(studentObjectIds.map((id) => id.toString()))];
+  const uniqueSemesters = [...semesters];
+
+  const creditSummariesByKey = new Map();
+
+  if (uniqueStudentIds.length > 0 && uniqueSemesters.length > 0) {
+    const registrations = await CourseRegistration.find({
+      student: { $in: uniqueStudentIds },
+      semester: { $in: uniqueSemesters },
+      status: { $in: ['approved', 'selected', 'pending'] },
+    }).populate('course');
+
+    registrations.forEach((reg) => {
+      const studentIdStr = reg.student.toString();
+      const key = `${studentIdStr}_${reg.semester}`;
+      const current = creditSummariesByKey.get(key) || {
+        approvedCredits: 0,
+        selectedCredits: 0,
+      };
+
+      const credits = reg.course && reg.course.credits ? reg.course.credits : 0;
+
+      if (reg.status === 'approved') {
+        current.approvedCredits += credits;
+      }
+
+      if (reg.status === 'selected' || reg.status === 'pending') {
+        current.selectedCredits += credits;
+      }
+
+      creditSummariesByKey.set(key, current);
+    });
+  }
+
+  const requestsWithCredits = requests.map((reqDoc) => {
+    const plain = reqDoc.toObject({ getters: true, virtuals: false });
+    const studentIdStr =
+      plain.student && plain.student._id
+        ? plain.student._id.toString()
+        : plain.student
+        ? plain.student.toString()
+        : '';
+    const key = `${studentIdStr}_${plain.semester}`;
+    const summary = creditSummariesByKey.get(key) || {
+      approvedCredits: 0,
+      selectedCredits: 0,
+    };
+
+    return {
+      ...plain,
+      approvedCredits: summary.approvedCredits,
+      selectedCredits: summary.selectedCredits,
+      maxCredits: CREDIT_LIMIT,
+    };
+  });
+
   res.status(200).json({
     success: true,
     message: 'Pending extra credit requests fetched successfully',
-    data: requests,
+    data: requestsWithCredits,
   });
 });
 
