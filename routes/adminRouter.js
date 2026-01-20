@@ -91,6 +91,13 @@ router.route('/sections')
     adminController.getSections
   );
 
+router.route('/sections/populate-from-students')
+  .post(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.populateSectionsFromStudents
+  );
+
 router.route('/sections/:id')
   .get(
     auth.checkUserAuthentication,

@@ -4,6 +4,7 @@ const CourseRegistration = require('../models/courseRegistrationModel');
 const Student = require('../models/studentModel');
 const Teacher = require('../models/teacherModel');
 const Section = require('../models/sectionModel');
+const ExtraCreditRequest = require('../models/extraCreditRequestModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 
@@ -509,6 +510,52 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
 
   // Note: Seat availability is now checked per section above, so we don't need the general check here
 
+  // Check credit limit (26 credits per semester)
+  const CREDIT_LIMIT = 26;
+  
+  // Get current semester from course
+  const currentSemester = course.semester;
+  
+  // Calculate current credits for this semester (selected + pending + approved courses)
+  const currentRegistrations = await CourseRegistration.find({
+    student: studentId,
+    semester: currentSemester,
+    status: { $in: ['selected', 'pending', 'approved'] },
+  }).populate('course');
+  
+  const currentCredits = currentRegistrations.reduce((sum, reg) => {
+    // Don't count the course we're trying to add if it's already selected
+    if (reg.course && reg.course._id.toString() === courseId.toString() && reg.status === 'selected') {
+      return sum;
+    }
+    return sum + (reg.course?.credits || 0);
+  }, 0);
+  
+  const newTotalCredits = currentCredits + (course.credits || 0);
+  
+  // Check if adding this course would exceed the credit limit
+  // Allow selection but warn the user - they won't be able to submit for approval
+  let creditWarning = null;
+  if (newTotalCredits > CREDIT_LIMIT) {
+    // Check if student has an approved extra credit request for this semester
+    const approvedExtraCreditRequest = await ExtraCreditRequest.findOne({
+      student: studentId,
+      semester: currentSemester,
+      status: 'approved',
+    });
+    
+    if (!approvedExtraCreditRequest) {
+      const extraCreditsNeeded = newTotalCredits - CREDIT_LIMIT;
+      creditWarning = `Warning: Credit limit exceeded. You have ${currentCredits} credits selected. Adding this course (${course.credits} credits) would result in ${newTotalCredits} credits, which exceeds the limit of ${CREDIT_LIMIT} credits per semester. You need to request ${extraCreditsNeeded} extra credit(s) from your advisor before submitting for approval.`;
+    } else {
+      // Check if the approved extra credit request covers the needed credits
+      const extraCreditsNeeded = newTotalCredits - CREDIT_LIMIT;
+      if (extraCreditsNeeded > approvedExtraCreditRequest.requestedCredits) {
+        creditWarning = `Warning: Your approved extra credit request allows ${approvedExtraCreditRequest.requestedCredits} extra credits, but you need ${extraCreditsNeeded} extra credits. Please request additional extra credits from your advisor before submitting for approval.`;
+      }
+    }
+  }
+
   // Check prerequisites
   // Prerequisites are clear only if the prerequisite courses have been approved by advisor
   // Approved courses are considered as passed and clear prerequisites for other courses
@@ -568,7 +615,8 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    message: 'Course added to selection successfully',
+    message: creditWarning || 'Course added to selection successfully',
+    warning: creditWarning || null,
   });
 });
 
@@ -699,6 +747,40 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
           ));
         }
       }
+    }
+  }
+
+  // Check credit limit before allowing submission
+  const CREDIT_LIMIT = 26;
+  const totalCredits = courses.reduce((sum, course) => sum + (course.credits || 0), 0);
+  
+  if (totalCredits > CREDIT_LIMIT) {
+    // Get current semester (use the first course's semester as they should all be the same)
+    const currentSemester = courses.length > 0 ? courses[0].semester : null;
+    
+    // Check if student has an approved extra credit request for this semester
+    const ExtraCreditRequest = require('../models/extraCreditRequestModel');
+    const approvedExtraCreditRequest = await ExtraCreditRequest.findOne({
+      student: studentId,
+      semester: currentSemester,
+      status: 'approved',
+    });
+    
+    if (!approvedExtraCreditRequest) {
+      const extraCreditsNeeded = totalCredits - CREDIT_LIMIT;
+      return next(new ErrorHandler(
+        `Cannot submit for approval: Credit limit exceeded. You have ${totalCredits} credits selected, which exceeds the limit of ${CREDIT_LIMIT} credits per semester. You need to request ${extraCreditsNeeded} extra credit(s) from your advisor before submitting.`,
+        400
+      ));
+    }
+    
+    // Check if the approved extra credit request covers the needed credits
+    const extraCreditsNeeded = totalCredits - CREDIT_LIMIT;
+    if (extraCreditsNeeded > approvedExtraCreditRequest.requestedCredits) {
+      return next(new ErrorHandler(
+        `Cannot submit for approval: Your approved extra credit request allows ${approvedExtraCreditRequest.requestedCredits} extra credits, but you need ${extraCreditsNeeded} extra credits. Please request additional extra credits from your advisor before submitting.`,
+        400
+      ));
     }
   }
 

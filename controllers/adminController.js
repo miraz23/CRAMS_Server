@@ -3,6 +3,7 @@ const Course = require('../models/courseModel');
 const Section = require('../models/sectionModel');
 const Student = require('../models/studentModel');
 const Teacher = require('../models/teacherModel');
+const CourseRegistration = require('../models/courseRegistrationModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
@@ -617,6 +618,177 @@ exports.createSection = catchAsyncError(async (req, res, next) => {
       status: section.status,
     },
   });
+});
+
+// Helper function to infer shift from section name
+const inferShiftFromSectionName = (sectionName) => {
+  const nameUpper = sectionName.toUpperCase();
+  // Common patterns: E = Evening, M = Morning, G = Morning (in some systems)
+  if (nameUpper.includes('E') || nameUpper.endsWith('E')) {
+    return 'Evening';
+  }
+  if (nameUpper.includes('M') && !nameUpper.includes('E')) {
+    return 'Morning';
+  }
+  if (nameUpper.includes('G')) {
+    return 'Morning';
+  }
+  // Default to Morning
+  return 'Morning';
+};
+
+// Populate sections from student data
+exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) => {
+  try {
+    // Get all students with section information
+    const students = await Student.find({ section: { $exists: true, $ne: null, $ne: '' } });
+    
+    if (students.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'No students with section data found',
+        data: {
+          created: 0,
+          skipped: 0,
+          sections: [],
+        },
+      });
+    }
+
+    // Get distinct sections from student data and track student IDs per section
+    const sectionDataMap = new Map(); // Map sectionName -> { studentIds: [], count: 0 }
+    students.forEach((student) => {
+      if (student.section) {
+        const sectionName = student.section.trim().toUpperCase();
+        if (sectionName) {
+          if (!sectionDataMap.has(sectionName)) {
+            sectionDataMap.set(sectionName, { studentIds: [], count: 0 });
+          }
+          const data = sectionDataMap.get(sectionName);
+          data.studentIds.push(student._id);
+          data.count += 1;
+        }
+      }
+    });
+
+    // Get existing sections
+    const existingSections = await Section.find({});
+    const existingSectionNames = new Set(
+      existingSections.map((s) => s.sectionName.toUpperCase())
+    );
+
+    // Get first available advisor as default (or use placeholder)
+    const advisors = await Teacher.find({ privilege: 'Advisor' }).limit(1);
+    const defaultAdvisor = advisors.length > 0 ? advisors[0].teacherId : 'TBD';
+
+    // Create sections for distinct section names that don't exist
+    const createdSections = [];
+    const skippedSections = [];
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const [sectionName, sectionData] of sectionDataMap.entries()) {
+      const studentCount = sectionData.count;
+      const studentIds = sectionData.studentIds;
+
+      if (existingSectionNames.has(sectionName)) {
+        skippedSections.push({
+          sectionName,
+          reason: 'Already exists',
+          studentCount,
+        });
+        skippedCount++;
+        continue;
+      }
+
+      try {
+        // Extract semester from course registrations
+        // Get course registrations for students in this section
+        const registrations = await CourseRegistration.find({
+          student: { $in: studentIds }
+        }).populate('course', 'semester');
+
+        // Count semesters from course registrations
+        const semesterCountMap = new Map();
+        registrations.forEach((reg) => {
+          if (reg.semester) {
+            semesterCountMap.set(reg.semester, (semesterCountMap.get(reg.semester) || 0) + 1);
+          } else if (reg.course && reg.course.semester) {
+            semesterCountMap.set(reg.course.semester, (semesterCountMap.get(reg.course.semester) || 0) + 1);
+          }
+        });
+
+        // Get the most common semester
+        let inferredSemester = 'Unknown';
+        if (semesterCountMap.size > 0) {
+          let maxCount = 0;
+          for (const [semester, count] of semesterCountMap.entries()) {
+            if (count > maxCount) {
+              maxCount = count;
+              inferredSemester = semester;
+            }
+          }
+        }
+
+        // Infer shift from section name
+        const inferredShift = inferShiftFromSectionName(sectionName);
+
+        // Calculate capacity: cap at 50, ensure enrolledStudents fits
+        // If studentCount > 50, set regularStudents to 50 and maxIrregularStudents to 0
+        // Otherwise, set regularStudents to studentCount and allow some irregular capacity
+        const enrolledStudents = studentCount;
+        const regularStudents = Math.min(studentCount, 50);
+        const maxIrregularStudents = studentCount > 50 ? 0 : 5; // Allow 5 irregular if under capacity
+        const totalCapacity = regularStudents + maxIrregularStudents;
+
+        const section = await Section.create({
+          sectionName,
+          semester: inferredSemester,
+          shift: inferredShift,
+          assignedAdvisor: defaultAdvisor,
+          regularStudents,
+          maxIrregularStudents,
+          totalCapacity,
+          enrolledStudents,
+          crName: 'TBD',
+          crContact: 'TBD',
+          acrName: 'TBD',
+          acrContact: 'TBD',
+          status: 'active',
+        });
+
+        createdSections.push({
+          sectionName: section.sectionName,
+          semester: section.semester,
+          shift: section.shift,
+          enrolledStudents: section.enrolledStudents,
+          assignedAdvisor: section.assignedAdvisor,
+        });
+        createdCount++;
+      } catch (error) {
+        // If section creation fails (e.g., validation error), skip it
+        skippedSections.push({
+          sectionName,
+          reason: error.message || 'Creation failed',
+          studentCount,
+        });
+        skippedCount++;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Sections populated successfully. Created: ${createdCount}, Skipped: ${skippedCount}`,
+      data: {
+        created: createdCount,
+        skipped: skippedCount,
+        sections: createdSections,
+        skipped: skippedSections,
+      },
+    });
+  } catch (error) {
+    return next(new ErrorHandler(error.message || 'Failed to populate sections from student data', 500));
+  }
 });
 
 exports.getSections = catchAsyncError(async (req, res) => {
@@ -1284,6 +1456,7 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 if (!sectionStats[section]) {
                   sectionStats[section] = {
                     semester: semester || undefined,
+                    session: session || undefined, // Store session for shift inference
                     count: 0,
                   };
                 }
@@ -1297,6 +1470,23 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
             }
           }
 
+          // Helper function to infer shift from section name
+          const inferShiftFromSectionName = (sectionName) => {
+            const nameUpper = sectionName.toUpperCase();
+            // Common patterns: E = Evening, M = Morning, G = Morning (in some systems)
+            if (nameUpper.includes('E') || nameUpper.endsWith('E')) {
+              return 'Evening';
+            }
+            if (nameUpper.includes('M') && !nameUpper.includes('E')) {
+              return 'Morning';
+            }
+            if (nameUpper.includes('G')) {
+              return 'Morning';
+            }
+            // Default to Morning
+            return 'Morning';
+          };
+
           // After processing students, ensure sections exist and enrollment is updated
           const sectionNames = Object.keys(sectionStats);
           for (const sectionName of sectionNames) {
@@ -1309,14 +1499,25 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
 
               let sectionDoc = await Section.findOne({ sectionName });
               if (!sectionDoc) {
-                // Create a new section with minimal/default data.
-                // Other options (advisor, CR/ACR, etc.) can be edited later in the UI.
+                // Infer shift from section name
+                const inferredShift = inferShiftFromSectionName(sectionName);
+                
+                // Calculate capacity: cap at 50, ensure enrolledStudents fits
+                // If enrolledCount > 50, set regularStudents to 50 and maxIrregularStudents to 0
+                // Otherwise, set regularStudents to enrolledCount and allow some irregular capacity
+                const regularStudents = Math.min(enrolledCount, 50);
+                const maxIrregularStudents = enrolledCount > 50 ? 0 : 5; // Allow 5 irregular if under capacity
+                const totalCapacity = regularStudents + maxIrregularStudents;
+
+                // Create a new section with data from CSV
                 sectionDoc = await Section.create({
                   sectionName,
                   semester: stats.semester || 'Unknown',
-                  shift: 'Unknown',
+                  shift: inferredShift,
                   assignedAdvisor: 'TBD',
-                  totalCapacity: enrolledCount || 1,
+                  regularStudents: regularStudents,
+                  maxIrregularStudents: maxIrregularStudents,
+                  totalCapacity: totalCapacity,
                   enrolledStudents: enrolledCount,
                   crName: 'TBD',
                   crContact: 'TBD',
@@ -1326,13 +1527,24 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 });
               } else {
                 // Update existing section's enrolledStudents and ensure capacity
-                sectionDoc.enrolledStudents = enrolledCount;
-                if (
-                  typeof sectionDoc.totalCapacity !== 'number' ||
-                  sectionDoc.totalCapacity < enrolledCount
-                ) {
-                  sectionDoc.totalCapacity = enrolledCount || 1;
+                const currentEnrolled = sectionDoc.enrolledStudents || 0;
+                const newEnrolled = enrolledCount;
+                
+                // Update enrolled students
+                sectionDoc.enrolledStudents = newEnrolled;
+                
+                // If enrolled students increased beyond capacity, adjust capacity
+                if (newEnrolled > sectionDoc.totalCapacity) {
+                  const regularStudents = Math.min(newEnrolled, 50);
+                  const maxIrregularStudents = newEnrolled > 50 ? 0 : Math.max(5, sectionDoc.maxIrregularStudents || 0);
+                  sectionDoc.regularStudents = regularStudents;
+                  sectionDoc.maxIrregularStudents = maxIrregularStudents;
+                  // totalCapacity will be recalculated by pre-save hook
+                } else if (newEnrolled > (sectionDoc.regularStudents || 0)) {
+                  // Ensure regularStudents is at least equal to enrolledStudents
+                  sectionDoc.regularStudents = Math.min(newEnrolled, 50);
                 }
+                
                 await sectionDoc.save();
               }
             } catch (sectionError) {

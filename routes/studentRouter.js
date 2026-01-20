@@ -1,6 +1,8 @@
 const router = require('express').Router();
 const studentController = require('../controllers/studentController');
 const courseRegistrationController = require('../controllers/courseRegistrationController');
+const extraCreditRequestController = require('../controllers/extraCreditRequestController');
+const advisorAppointmentController = require('../controllers/advisorAppointmentController');
 const auth = require('../middleware/Auth');
 
 // get all student details
@@ -58,6 +60,22 @@ router.route('/courses/submit')
 // Get registration status
 router.route('/courses/status')
   .get(auth.checkStudentAuthentication, courseRegistrationController.getRegistrationStatus);
+
+// Extra Credit Request Routes
+// Create extra credit request
+router.route('/extra-credit-requests')
+  .post(auth.checkStudentAuthentication, extraCreditRequestController.createExtraCreditRequest)
+  .get(auth.checkStudentAuthentication, extraCreditRequestController.getMyExtraCreditRequests);
+
+// Advisor Appointment Routes
+// Get my advisor information
+router.route('/advisor')
+  .get(auth.checkStudentAuthentication, advisorAppointmentController.getMyAdvisor);
+
+// Book appointment
+router.route('/appointments')
+  .post(auth.checkStudentAuthentication, advisorAppointmentController.bookAppointment)
+  .get(auth.checkStudentAuthentication, advisorAppointmentController.getMyAppointments);
 
 module.exports = router;
 

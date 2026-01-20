@@ -1,5 +1,7 @@
 const router = require('express').Router();
 const teacherController = require('../controllers/teacherController');
+const extraCreditRequestController = require('../controllers/extraCreditRequestController');
+const advisorAppointmentController = require('../controllers/advisorAppointmentController');
 const auth = require('../middleware/Auth');
 
 // get all teacher details
@@ -55,5 +57,31 @@ router.route('/advisor/bulk-approve/:studentId')
 
 router.route('/advisor/bulk-reject/:studentId')
   .post(auth.checkTeacherAuthentication, teacherController.bulkRejectRegistrations);
+
+// Extra Credit Request Routes
+// Get pending extra credit requests
+router.route('/advisor/extra-credit-requests/pending')
+  .get(auth.checkTeacherAuthentication, extraCreditRequestController.getPendingExtraCreditRequests);
+
+// Approve extra credit request
+router.route('/advisor/extra-credit-requests/:requestId/approve')
+  .post(auth.checkTeacherAuthentication, extraCreditRequestController.approveExtraCreditRequest);
+
+// Reject extra credit request
+router.route('/advisor/extra-credit-requests/:requestId/reject')
+  .post(auth.checkTeacherAuthentication, extraCreditRequestController.rejectExtraCreditRequest);
+
+// Advisor Appointment Routes
+// Get my appointments
+router.route('/advisor/appointments')
+  .get(auth.checkTeacherAuthentication, advisorAppointmentController.getAdvisorAppointments);
+
+// Approve appointment
+router.route('/advisor/appointments/:appointmentId/approve')
+  .post(auth.checkTeacherAuthentication, advisorAppointmentController.approveAppointment);
+
+// Reject appointment
+router.route('/advisor/appointments/:appointmentId/reject')
+  .post(auth.checkTeacherAuthentication, advisorAppointmentController.rejectAppointment);
 
 module.exports = router;
