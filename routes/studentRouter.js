@@ -25,17 +25,6 @@ router.route('/schedule')
 router.route('/routine')
   .get(auth.checkStudentAuthentication, studentController.getStudentRoutine);
 
-// get single student details
-router.route('/:id')
-  .get(studentController.getSingleStudentDetails)
-  .post(studentController.updateStudent)
-  .delete(studentController.deleteStudent);
-
-// update and delete student
-router.route('/:id')
-  .put(studentController.updateStudent)
-  .delete(studentController.deleteStudent);
-
 // Course Registration Routes (Protected)
 // Get available courses
 router.route('/courses/available')
@@ -76,6 +65,13 @@ router.route('/advisor')
 router.route('/appointments')
   .post(auth.checkStudentAuthentication, advisorAppointmentController.bookAppointment)
   .get(auth.checkStudentAuthentication, advisorAppointmentController.getMyAppointments);
+
+// NOTE: Keep parameterized routes LAST so they don't swallow specific routes above.
+// get single student details + update + delete
+router.route('/:id')
+  .get(studentController.getSingleStudentDetails)
+  .put(studentController.updateStudent)
+  .delete(studentController.deleteStudent);
 
 module.exports = router;
 
