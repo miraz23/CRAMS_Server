@@ -374,6 +374,20 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   }
   
   const studentId = req.student._id;
+
+  // Business rule: after a student gets extra credit approved once, lock further course selection
+  const approvedExtraCreditEver = await ExtraCreditRequest.findOne({
+    student: studentId,
+    status: 'approved',
+  }).select('_id');
+  if (approvedExtraCreditEver) {
+    return next(
+      new ErrorHandler(
+        'Course selection is locked because extra credit has already been approved for you.',
+        400
+      )
+    );
+  }
   
   // Validate studentId is a valid ObjectId
   if (!studentId || !mongoose.Types.ObjectId.isValid(studentId)) {

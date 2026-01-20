@@ -26,8 +26,6 @@ exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
 
   // Normalize section name to uppercase for matching (since sectionName is stored in uppercase)
   const normalizedSectionName = student.section ? student.section.trim().toUpperCase() : null;
-  
-  console.log(`[getMyAdvisor] Student ID: ${studentId}, Student Section: ${student.section}, Normalized: ${normalizedSectionName}`);
 
   // Find the section - use simple exact match first (both should be uppercase)
   let section = await Section.findOne({
@@ -37,29 +35,22 @@ exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
 
   // If not found, try case-insensitive search
   if (!section) {
-    console.log(`[getMyAdvisor] Exact match failed, trying case-insensitive search`);
     section = await Section.findOne({
       sectionName: { $regex: new RegExp(`^${normalizedSectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
       status: 'active',
     });
   }
 
-  // If still not found, try finding all sections to debug
+  // If still not found, return error
   if (!section) {
-    const allSections = await Section.find({ status: 'active' }).select('sectionName');
-    console.log(`[getMyAdvisor] Section not found. Available sections:`, allSections.map(s => s.sectionName));
     return next(new ErrorHandler(`Section "${normalizedSectionName}" not found or inactive`, 404));
   }
 
-  console.log(`[getMyAdvisor] Section found: ${section.sectionName}, Assigned Advisor: ${section.assignedAdvisor}`);
-
   if (!section.assignedAdvisor || section.assignedAdvisor.trim() === '' || section.assignedAdvisor === 'TBD') {
-    console.log(`[getMyAdvisor] Advisor not assigned or is TBD`);
     return next(new ErrorHandler('Advisor not assigned to your section', 404));
   }
 
   const advisorTeacherId = section.assignedAdvisor.trim();
-  console.log(`[getMyAdvisor] Looking for advisor with teacherId: "${advisorTeacherId}"`);
 
   // Get advisor details - try to find by teacherId
   let advisor = await Teacher.findOne({
@@ -68,21 +59,14 @@ exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
 
   // If not found, try case-insensitive search
   if (!advisor) {
-    console.log(`[getMyAdvisor] Exact teacherId match failed, trying case-insensitive`);
     advisor = await Teacher.findOne({
       teacherId: { $regex: new RegExp(`^${advisorTeacherId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
     }).select('teacherId name email mobileNumber');
   }
 
   if (!advisor) {
-    // Log all teachers for debugging
-    const allTeachers = await Teacher.find({ privilege: 'Advisor' }).select('teacherId name');
-    console.error(`[getMyAdvisor] Advisor not found for teacherId: "${advisorTeacherId}"`);
-    console.error(`[getMyAdvisor] Available advisors:`, allTeachers.map(t => ({ teacherId: t.teacherId, name: t.name })));
     return next(new ErrorHandler(`Advisor not found for teacherId: ${advisorTeacherId}`, 404));
   }
-
-  console.log(`[getMyAdvisor] Advisor found: ${advisor.name} (${advisor.teacherId})`);
 
   res.status(200).json({
     success: true,

@@ -12,6 +12,17 @@ exports.createExtraCreditRequest = catchAsyncError(async (req, res, next) => {
   const { semester, requestedCredits, reason } = req.body;
   const studentId = req.student._id;
 
+  // Business rule: one extra credit request per student (ever)
+  const existingAnyRequest = await ExtraCreditRequest.findOne({ student: studentId }).select('_id status semester');
+  if (existingAnyRequest) {
+    return next(
+      new ErrorHandler(
+        'You have already submitted an extra credit request. No further extra credit requests are allowed.',
+        400
+      )
+    );
+  }
+
   if (!semester) {
     return next(new ErrorHandler('Semester is required', 400));
   }
@@ -26,20 +37,6 @@ exports.createExtraCreditRequest = catchAsyncError(async (req, res, next) => {
 
   if (reason.length > 500) {
     return next(new ErrorHandler('Reason cannot exceed 500 characters', 400));
-  }
-
-  // Check if there's already a pending request for this semester
-  const existingPendingRequest = await ExtraCreditRequest.findOne({
-    student: studentId,
-    semester: semester,
-    status: 'pending',
-  });
-
-  if (existingPendingRequest) {
-    return next(new ErrorHandler(
-      'You already have a pending extra credit request for this semester. Please wait for advisor approval.',
-      400
-    ));
   }
 
   // Create the request
