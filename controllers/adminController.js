@@ -192,17 +192,47 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
     ? instructors.filter(Boolean).map((id) => id.toString().trim())
     : [];
 
-  // Normalize instructorSections mapping
+  // Normalize and validate instructorSections mapping
   let normalizedInstructorSections = [];
   if (Array.isArray(instructorSections)) {
-    normalizedInstructorSections = instructorSections
-      .filter((item) => item && item.instructorId)
-      .map((item) => ({
-        instructorId: item.instructorId.toString().trim(),
-        sections: Array.isArray(item.sections)
+    for (const item of instructorSections) {
+      if (item && item.instructorId) {
+        const sectionNames = Array.isArray(item.sections)
           ? item.sections.filter(Boolean).map((s) => s.toString().trim())
-          : [],
-      }));
+          : [];
+        
+        // Verify each section exists and matches the course semester
+        if (sectionNames.length > 0) {
+          const sectionsToVerify = await Section.find({
+            sectionName: { $in: sectionNames },
+          });
+          
+          const validSections = sectionsToVerify
+            .filter((sec) => sec.semester === semester)
+            .map((sec) => sec.sectionName);
+          
+          const invalidSections = sectionNames.filter((name) => !validSections.includes(name));
+          if (invalidSections.length > 0) {
+            return next(
+              new ErrorHandler(
+                `Sections ${invalidSections.join(', ')} do not match course semester ${semester}`,
+                400
+              )
+            );
+          }
+          
+          normalizedInstructorSections.push({
+            instructorId: item.instructorId.toString().trim(),
+            sections: validSections,
+          });
+        } else {
+          normalizedInstructorSections.push({
+            instructorId: item.instructorId.toString().trim(),
+            sections: [],
+          });
+        }
+      }
+    }
   }
 
   // Create new course
@@ -404,14 +434,51 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     if (!Array.isArray(instructorSections)) {
       return next(new ErrorHandler('Invalid instructorSections value', 400));
     }
-    course.instructorSections = instructorSections
-      .filter((item) => item && item.instructorId)
-      .map((item) => ({
-        instructorId: item.instructorId.toString().trim(),
-        sections: Array.isArray(item.sections)
+    
+    // Validate that assigned sections match the course's semester
+    const courseSemester = semester || course.semester;
+    const filteredInstructorSections = [];
+    
+    for (const item of instructorSections) {
+      if (item && item.instructorId) {
+        const sectionNames = Array.isArray(item.sections)
           ? item.sections.filter(Boolean).map((s) => s.toString().trim())
-          : [],
-      }));
+          : [];
+        
+        // Verify each section exists and matches the course semester
+        if (sectionNames.length > 0) {
+          const sectionsToVerify = await Section.find({
+            sectionName: { $in: sectionNames },
+          });
+          
+          const validSections = sectionsToVerify
+            .filter((sec) => sec.semester === courseSemester)
+            .map((sec) => sec.sectionName);
+          
+          const invalidSections = sectionNames.filter((name) => !validSections.includes(name));
+          if (invalidSections.length > 0) {
+            return next(
+              new ErrorHandler(
+                `Sections ${invalidSections.join(', ')} do not match course semester ${courseSemester}`,
+                400
+              )
+            );
+          }
+          
+          filteredInstructorSections.push({
+            instructorId: item.instructorId.toString().trim(),
+            sections: validSections,
+          });
+        } else {
+          filteredInstructorSections.push({
+            instructorId: item.instructorId.toString().trim(),
+            sections: [],
+          });
+        }
+      }
+    }
+    
+    course.instructorSections = filteredInstructorSections;
   }
 
   if (semester) {

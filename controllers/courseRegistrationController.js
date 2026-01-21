@@ -719,19 +719,19 @@ exports.removeCourseFromSelection = catchAsyncError(async (req, res, next) => {
 // Get selected courses with conflict detection
 exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
- 
+
   const registrations = await CourseRegistration.find({
     student: studentId,
     status: { $in: ['selected', 'pending'] },
   }).populate('course');
- 
+
   const courses = registrations.map(reg => reg.course);
- 
+
   // Check for conflicts
   const coursesWithConflicts = courses.map((course, index) => {
     let hasConflict = false;
     const conflictingCourses = [];
- 
+
     for (let i = 0; i < courses.length; i++) {
       if (i !== index && course.schedule && courses[i].schedule) {
         if (checkTimeConflict(course.schedule, courses[i].schedule)) {
@@ -744,11 +744,11 @@ exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
         }
       }
     }
- 
+
     const enrolledCount = course.enrolledStudents ? course.enrolledStudents.length : 0;
     const totalSeats = course.regularSeats + course.irregularSeats;
     const availableSeats = Math.max(0, totalSeats - enrolledCount);
- 
+
     return {
       id: course._id,
       courseCode: course.courseCode,
@@ -769,10 +769,17 @@ exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
       registrationStatus: registrations[index].status,
     };
   });
- 
-  // Calculate total credits
-  const totalCredits = courses.reduce((sum, course) => sum + (course.credits || 0), 0);
- 
+
+  // Calculate total credits including selected, pending, and approved courses
+  const allRegistrationsForCredit = await CourseRegistration.find({
+    student: studentId,
+    status: { $in: ['selected', 'pending', 'approved'] },
+  }).populate('course');
+  
+  const totalCredits = allRegistrationsForCredit.reduce((sum, reg) => {
+    return sum + (reg.course?.credits || 0);
+  }, 0);
+
   res.status(200).json({
     success: true,
     message: 'Selected courses fetched successfully',
@@ -780,7 +787,7 @@ exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
       courses: coursesWithConflicts,
       summary: {
         selectedCount: courses.length,
-        totalCredits,
+        totalCredits, // This now includes approved courses as well
         hasConflicts: coursesWithConflicts.some(c => c.hasConflict),
       },
     },
@@ -823,8 +830,17 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
  
   // Check credit limit before allowing submission
   const CREDIT_LIMIT = 26;
-  const totalCredits = courses.reduce((sum, course) => sum + (course.credits || 0), 0);
- 
+  
+  // Calculate total credits including selected, pending, and approved courses
+  const allRegistrationsForCreditCheck = await CourseRegistration.find({
+    student: studentId,
+    status: { $in: ['selected', 'pending', 'approved'] },
+  }).populate('course');
+  
+  const totalCredits = allRegistrationsForCreditCheck.reduce((sum, reg) => {
+    return sum + (reg.course?.credits || 0);
+  }, 0);
+
   if (totalCredits > CREDIT_LIMIT) {
     // Extra credit requests are tied to the student's own semester/term (based on section),
     // not the (possibly different) semester of an irregular course.
@@ -839,9 +855,9 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
         studentSemester = studentSection.semester;
       }
     }
- 
+
     const extraCreditSemester = studentSemester || (courses.length > 0 ? courses[0].semester : null);
- 
+
     // Check if student has an approved extra credit request for this semester
     const ExtraCreditRequest = require('../models/extraCreditRequestModel');
     const approvedExtraCreditRequest = await ExtraCreditRequest.findOne({
@@ -849,15 +865,15 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
       semester: extraCreditSemester,
       status: 'approved',
     });
- 
+
     if (!approvedExtraCreditRequest) {
       const extraCreditsNeeded = totalCredits - CREDIT_LIMIT;
       return next(new ErrorHandler(
-        `Cannot submit for approval: Credit limit exceeded. You have ${totalCredits} credits selected, which exceeds the limit of ${CREDIT_LIMIT} credits per semester. You need to request ${extraCreditsNeeded} extra credit(s) from your advisor before submitting.`,
+        `Cannot submit for approval: Credit limit exceeded. You have ${totalCredits} total credits (including submitted, approved, and selected courses), which exceeds the limit of ${CREDIT_LIMIT} credits per semester. You need to request ${extraCreditsNeeded} extra credit(s) from your advisor before submitting.`,
         400
       ));
     }
- 
+
     // Check if the approved extra credit request covers the needed credits
     const extraCreditsNeeded = totalCredits - CREDIT_LIMIT;
     if (extraCreditsNeeded > approvedExtraCreditRequest.requestedCredits) {
