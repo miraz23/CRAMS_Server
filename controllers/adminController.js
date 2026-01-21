@@ -4,6 +4,7 @@ const Section = require('../models/sectionModel');
 const Student = require('../models/studentModel');
 const Teacher = require('../models/teacherModel');
 const CourseRegistration = require('../models/courseRegistrationModel');
+const SystemSettings = require('../models/systemSettingsModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 const { sendToken } = require('../utils/jwt');
@@ -1832,5 +1833,83 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
         }
         reject(error);
       });
+  });
+});
+
+// Get system settings
+exports.getSystemSettings = catchAsyncError(async (req, res, next) => {
+  const settings = await SystemSettings.getSettings();
+  
+  res.status(200).json({
+    success: true,
+    message: 'System settings fetched successfully',
+    data: {
+      registrationPeriod: settings.registrationPeriod,
+      universityName: settings.universityName,
+      currentSemester: settings.currentSemester,
+      systemEmail: settings.systemEmail,
+      maintenanceMode: settings.maintenanceMode
+    }
+  });
+});
+
+// Update system settings
+exports.updateSystemSettings = catchAsyncError(async (req, res, next) => {
+  const { 
+    registrationPeriod, 
+    universityName, 
+    currentSemester, 
+    systemEmail, 
+    maintenanceMode 
+  } = req.body;
+  
+  const settings = await SystemSettings.getSettings();
+  
+  // Update registration period if provided
+  if (registrationPeriod !== undefined) {
+    if (registrationPeriod.startDate !== undefined) {
+      settings.registrationPeriod.startDate = registrationPeriod.startDate;
+    }
+    if (registrationPeriod.endDate !== undefined) {
+      settings.registrationPeriod.endDate = registrationPeriod.endDate;
+    }
+    if (registrationPeriod.enabled !== undefined) {
+      settings.registrationPeriod.enabled = registrationPeriod.enabled;
+    }
+    
+    // Validate that startDate is before endDate if both are set
+    if (settings.registrationPeriod.startDate && settings.registrationPeriod.endDate) {
+      if (new Date(settings.registrationPeriod.startDate) >= new Date(settings.registrationPeriod.endDate)) {
+        return next(new ErrorHandler('Registration start date must be before end date', 400));
+      }
+    }
+  }
+  
+  // Update general settings if provided
+  if (universityName !== undefined) {
+    settings.universityName = universityName;
+  }
+  if (currentSemester !== undefined) {
+    settings.currentSemester = currentSemester;
+  }
+  if (systemEmail !== undefined) {
+    settings.systemEmail = systemEmail;
+  }
+  if (maintenanceMode !== undefined) {
+    settings.maintenanceMode = maintenanceMode;
+  }
+  
+  await settings.save();
+  
+  res.status(200).json({
+    success: true,
+    message: 'System settings updated successfully',
+    data: {
+      registrationPeriod: settings.registrationPeriod,
+      universityName: settings.universityName,
+      currentSemester: settings.currentSemester,
+      systemEmail: settings.systemEmail,
+      maintenanceMode: settings.maintenanceMode
+    }
   });
 });

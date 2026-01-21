@@ -497,3 +497,19 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
     },
   });
 });
+
+// Get system settings (public info for students)
+exports.getSystemSettings = catchAsyncError(async (req, res, next) => {
+  const SystemSettings = require('../models/systemSettingsModel');
+  const settings = await SystemSettings.getSettings();
+
+  res.status(200).json({
+    success: true,
+    message: 'System settings fetched successfully',
+    data: {
+      registrationPeriod: settings.registrationPeriod,
+      currentSemester: settings.currentSemester,
+      universityName: settings.universityName,
+    },
+  });
+});

@@ -176,6 +176,19 @@ router.route('/user-management/teachers/:id')
     adminController.deleteTeacherByAdmin
   );
 
+// System Settings Routes
+router.route('/system-settings')
+  .get(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.getSystemSettings
+  )
+  .put(
+    auth.checkUserAuthentication,
+    auth.checkAdminPrivileges('Admin', 'Super Admin'),
+    adminController.updateSystemSettings
+  );
+
 // get single admin details
 router.route('/:id')
   .get(

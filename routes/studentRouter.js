@@ -25,6 +25,10 @@ router.route('/schedule')
 router.route('/routine')
   .get(auth.checkStudentAuthentication, studentController.getStudentRoutine);
 
+// get system settings (public)
+router.route('/system-settings')
+  .get(studentController.getSystemSettings);
+
 // Course Registration Routes (Protected)
 // Get available courses
 router.route('/courses/available')

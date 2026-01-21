@@ -5,6 +5,7 @@ const Student = require('../models/studentModel');
 const Teacher = require('../models/teacherModel');
 const Section = require('../models/sectionModel');
 const ExtraCreditRequest = require('../models/extraCreditRequestModel');
+const SystemSettings = require('../models/systemSettingsModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
  
@@ -66,6 +67,42 @@ const checkTimeConflict = (schedule1, schedule2) => {
  
   // Check if time ranges overlap
   return !(end1 <= start2 || end2 <= start1);
+};
+
+// Helper function to check if registration is allowed based on registration period
+const checkRegistrationPeriod = async () => {
+  const settings = await SystemSettings.getSettings();
+  
+  // If registration period is not enabled, allow registration
+  if (!settings.registrationPeriod.enabled) {
+    return { allowed: true };
+  }
+  
+  // If enabled but no dates set, allow registration
+  if (!settings.registrationPeriod.startDate || !settings.registrationPeriod.endDate) {
+    return { allowed: true };
+  }
+  
+  const now = new Date();
+  const startDate = new Date(settings.registrationPeriod.startDate);
+  const endDate = new Date(settings.registrationPeriod.endDate);
+  
+  // Check if current date is within the registration period
+  if (now < startDate) {
+    return {
+      allowed: false,
+      message: `Registration period has not started yet. Registration will begin on ${startDate.toLocaleDateString()}.`
+    };
+  }
+  
+  if (now > endDate) {
+    return {
+      allowed: false,
+      message: `Registration period has ended. Registration was available until ${endDate.toLocaleDateString()}.`
+    };
+  }
+  
+  return { allowed: true };
 };
  
 // Get all available courses with search and filter
@@ -367,13 +404,19 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
 // Add course to selection
 exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   const { courseId, sectionId } = req.body;
- 
+
   // Validate that student is authenticated and has a valid ID
   if (!req.student || !req.student._id) {
     return next(new ErrorHandler('Student authentication required', 401));
   }
- 
+
   const studentId = req.student._id;
+
+  // Check if registration period is active
+  const registrationCheck = await checkRegistrationPeriod();
+  if (!registrationCheck.allowed) {
+    return next(new ErrorHandler(registrationCheck.message, 403));
+  }
  
   // Business rule: after a student gets extra credit approved once, lock further course selection
   const approvedExtraCreditEver = await ExtraCreditRequest.findOne({
@@ -747,7 +790,13 @@ exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
 // Submit courses for approval
 exports.submitForApproval = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
- 
+
+  // Check if registration period is active
+  const registrationCheck = await checkRegistrationPeriod();
+  if (!registrationCheck.allowed) {
+    return next(new ErrorHandler(registrationCheck.message, 403));
+  }
+
   const registrations = await CourseRegistration.find({
     student: studentId,
     status: 'selected',
