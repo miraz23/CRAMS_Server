@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 
 const systemSettingsSchema = new mongoose.Schema({
-  // Registration period settings
   registrationPeriod: {
     startDate: {
       type: Date,
@@ -17,7 +16,6 @@ const systemSettingsSchema = new mongoose.Schema({
     }
   },
   
-  // General settings
   universityName: {
     type: String,
     default: 'International Islamic University Chittagong'
@@ -31,13 +29,11 @@ const systemSettingsSchema = new mongoose.Schema({
     default: 'crams@iiuc.ac.bd'
   },
   
-  // Maintenance mode
   maintenanceMode: {
     type: Boolean,
     default: false
   },
   
-  // Singleton pattern - only one settings document
   singleton: {
     type: Boolean,
     default: true,
@@ -47,7 +43,6 @@ const systemSettingsSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Ensure only one settings document exists
 systemSettingsSchema.statics.getSettings = async function() {
   let settings = await this.findOne({ singleton: true });
   if (!settings) {

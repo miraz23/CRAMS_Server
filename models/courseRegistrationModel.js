@@ -53,7 +53,6 @@ const courseRegistrationSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Ensure one registration per student per course per semester
 courseRegistrationSchema.index({ student: 1, course: 1, semester: 1 }, { unique: true });
 
 module.exports = mongoose.model('CourseRegistration', courseRegistrationSchema);

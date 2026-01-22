@@ -34,18 +34,15 @@ const courseSchema = new mongoose.Schema({
     trim: true,
     default: '',
   },
-  // Multiple instructors can be assigned to a course
   instructors: [{
     type: String,
     trim: true,
   }],
-  // Track which sections each instructor is responsible for
   instructorSections: [{
     instructorId: { type: String, trim: true },
     sections: [{ type: String, trim: true }],
   }],
   schedule: {
-    // New structure: per-day schedules
     daySchedules: [{
       day: {
         type: String,
@@ -63,7 +60,6 @@ const courseSchema = new mongoose.Schema({
         default: '',
       },
     }],
-    // Legacy fields for backward compatibility
     days: [{
       type: String,
       enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -110,7 +106,6 @@ const courseSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Seat counts are optional; keep availableSeats stable even if not used.
 courseSchema.pre('save', function(next) {
   if (this.isNew || this.isModified('regularSeats') || this.isModified('irregularSeats') || this.isModified('enrolledStudents')) {
     const totalSeats = (this.regularSeats || 0) + (this.irregularSeats || 0);

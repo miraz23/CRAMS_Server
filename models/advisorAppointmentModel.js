@@ -44,7 +44,6 @@ const advisorAppointmentSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Index to prevent duplicate appointments at same time
 advisorAppointmentSchema.index({ advisor: 1, appointmentDate: 1, appointmentTime: 1 }, { 
   unique: true 
 });

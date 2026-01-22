@@ -1,7 +1,6 @@
 const multer = require('multer');
 const path = require('path');
 
-// Configure multer for CSV file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, 'uploads/'); // Make sure this directory exists
@@ -12,7 +11,6 @@ const storage = multer.diskStorage({
   }
 });
 
-// File filter to only accept CSV files
 const fileFilter = (req, file, cb) => {
   if (file.mimetype === 'text/csv' || path.extname(file.originalname).toLowerCase() === '.csv') {
     cb(null, true);

@@ -46,7 +46,6 @@ adminSchema.methods.getJwtToken = function () {
     })
 }
 
-// Compares the provided password with the hashed password stored in the database
 adminSchema.methods.comparePassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password)
 }

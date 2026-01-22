@@ -1,4 +1,3 @@
-// Format date to YYYY-MM-DD
 const formatDate = (date) => {
   if (!date) return null;
   const d = new Date(date);
@@ -8,7 +7,6 @@ const formatDate = (date) => {
   return `${year}-${month}-${day}`;
 };
 
-// Format GPA to always show 2 decimal places
 const formatGPA = (gpa) => {
   if (gpa === null || gpa === undefined) return null;
   return parseFloat(gpa).toFixed(2);

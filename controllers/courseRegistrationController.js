@@ -9,13 +9,11 @@ const SystemSettings = require('../models/systemSettingsModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
  
-// Helper function to check time conflicts
 const checkTimeConflict = (schedule1, schedule2) => {
   if (!schedule1 || !schedule2) {
     return false;
   }
  
-  // Parse time strings (format: "10:00 AM" or "2:00 PM")
   const parseTime = (timeStr) => {
     if (!timeStr) return Infinity;
     const [time, period] = timeStr.split(' ');
@@ -26,11 +24,9 @@ const checkTimeConflict = (schedule1, schedule2) => {
     return hour24 * 60 + parseInt(minutes || 0);
   };
  
-  // Handle new daySchedules structure (per-day scheduling)
   if (schedule1.daySchedules && Array.isArray(schedule1.daySchedules) && schedule1.daySchedules.length > 0 &&
       schedule2.daySchedules && Array.isArray(schedule2.daySchedules) && schedule2.daySchedules.length > 0) {
  
-    // Check for conflicts on each day
     for (const ds1 of schedule1.daySchedules) {
       for (const ds2 of schedule2.daySchedules) {
         if (ds1.day === ds2.day) {
@@ -39,7 +35,6 @@ const checkTimeConflict = (schedule1, schedule2) => {
           const start2 = parseTime(ds2.startTime);
           const end2 = parseTime(ds2.endTime);
  
-          // Check if time ranges overlap
           if (!(end1 <= start2 || end2 <= start1)) {
             return true; // Conflict found
           }
@@ -49,12 +44,10 @@ const checkTimeConflict = (schedule1, schedule2) => {
     return false; // No conflicts found
   }
  
-  // Handle legacy structure (single time for all days)
   if (!schedule1.days || !schedule2.days) {
     return false;
   }
  
-  // Check if there are common days
   const commonDays = schedule1.days.filter(day => schedule2.days.includes(day));
   if (commonDays.length === 0) {
     return false;
@@ -65,20 +58,16 @@ const checkTimeConflict = (schedule1, schedule2) => {
   const start2 = parseTime(schedule2.startTime);
   const end2 = parseTime(schedule2.endTime);
  
-  // Check if time ranges overlap
   return !(end1 <= start2 || end2 <= start1);
 };
 
-// Helper function to check if registration is allowed based on registration period
 const checkRegistrationPeriod = async () => {
   const settings = await SystemSettings.getSettings();
   
-  // If registration period is not enabled, allow registration
   if (!settings.registrationPeriod.enabled) {
     return { allowed: true };
   }
   
-  // If enabled but no dates set, allow registration
   if (!settings.registrationPeriod.startDate || !settings.registrationPeriod.endDate) {
     return { allowed: true };
   }
@@ -87,7 +76,6 @@ const checkRegistrationPeriod = async () => {
   const startDate = new Date(settings.registrationPeriod.startDate);
   const endDate = new Date(settings.registrationPeriod.endDate);
   
-  // Check if current date is within the registration period
   if (now < startDate) {
     return {
       allowed: false,
@@ -105,7 +93,6 @@ const checkRegistrationPeriod = async () => {
   return { allowed: true };
 };
  
-// Get all available courses with search and filter
 exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
   const { search, department, semester } = req.query;
   const query = { status: 'active' };
@@ -120,7 +107,6 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
  
   let courses = await Course.find(query);
  
-  // Apply search filter
   if (search) {
     const searchLower = search.toLowerCase();
     courses = courses.filter(course => 
@@ -130,7 +116,6 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     );
   }
  
-  // Get student's course registrations to mark them appropriately
   let selectedCourseIds = [];
   let registeredCourseIds = []; // approved, pending, rejected courses
   let registeredCourseStatuses = {}; // Map of courseId -> status
@@ -153,24 +138,20 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
         }
       }
  
-      // Track all registered courses (approved, pending, rejected)
       if (['approved', 'pending', 'rejected', 'selected'].includes(status)) {
         registeredCourseIds.push(courseId);
         registeredCourseStatuses[courseId] = status;
-        // Also track section for approved/pending courses so we can show schedule and seats
         if ((status === 'approved' || status === 'pending') && reg.section) {
           selectedSections[courseId] = reg.section._id.toString();
         }
       }
  
-      // Track approved courses (these are considered as passed and clear prerequisites)
       if (status === 'approved' && reg.course && reg.course.courseCode) {
         approvedCourseCodes.push(reg.course.courseCode);
       }
     });
   }
  
-  // Get student's section and semester if logged in
   let studentSemester = null;
   let studentSectionName = null;
   if (req.student) {
@@ -187,27 +168,21 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Fetch all teachers to map IDs to names
   const teachers = await Teacher.find({}, 'teacherId name');
   const teacherMap = new Map(teachers.map(t => [t.teacherId, t.name]));
  
-  // Get all course registrations to count irregular students per section
   const allCourseRegistrations = await CourseRegistration.find({
     status: { $in: ['selected', 'pending', 'approved'] }
   }).populate('student').populate('course').populate('section');
  
-  // Build a map to count irregular students per course-section combination
-  // courseId -> sectionId -> count
   const irregularCountMap = new Map();
  
-  // Get all sections to build a semester map
   const allSections = await Section.find({ status: 'active' });
   const sectionSemesterMap = new Map();
   allSections.forEach(section => {
     sectionSemesterMap.set(section.sectionName, section.semester);
   });
  
-  // Count irregular students per course-section
   for (const reg of allCourseRegistrations) {
     if (!reg.course || !reg.student || !reg.section) continue;
  
@@ -215,7 +190,6 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     const studentSectionSemester = sectionSemesterMap.get(reg.student.section);
  
     if (studentSectionSemester && studentSectionSemester !== courseSemester) {
-      // This is an irregular student for this course
       const courseId = reg.course._id.toString();
       const sectionId = reg.section._id.toString();
  
@@ -228,7 +202,6 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Process courses with section information
   const courseDataPromises = courses.map(async (course) => {
     const enrolledCount = course.enrolledStudents ? course.enrolledStudents.length : 0;
     const totalSeats = course.regularSeats + course.irregularSeats;
@@ -238,21 +211,17 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     const isRegistered = registeredCourseIds.includes(courseIdStr);
     const registrationStatus = registeredCourseStatuses[courseIdStr] || null;
  
-    // Map instructor IDs to names
     const instructorNames = (course.instructors || [])
       .map(id => teacherMap.get(id) || id)
       .filter(Boolean);
  
-    // Get all sections for this course's semester
     const sections = await Section.find({
       semester: course.semester,
       status: 'active'
     }).sort({ sectionName: 1 });
  
-    // Get irregular count for this course
     const courseIrregularMap = irregularCountMap.get(courseIdStr) || new Map();
  
-    // Count regular students enrolled in each section for this course
     const regularCountMap = new Map();
     const registrationsForCourse = await CourseRegistration.find({
       course: course._id,
@@ -262,52 +231,37 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
     registrationsForCourse.forEach(reg => {
       if (reg.section && reg.student && reg.student.section) {
         const sectionId = reg.section._id.toString();
-        // Check if student is regular (same semester as course)
         const studentSectionName = reg.student.section;
         const studentSectionSemester = sectionSemesterMap.get(studentSectionName);
  
-        // If student's section semester matches course semester, they're regular
         if (studentSectionSemester === course.semester) {
-          // This is a regular student in this section
           const currentCount = regularCountMap.get(sectionId) || 0;
           regularCountMap.set(sectionId, currentCount + 1);
         }
       }
     });
  
-    // Filter sections based on student type
-    // Regular students can only see their registered section
-    // Irregular students can see all sections
     const isRegular = studentSemester === course.semester;
     let filteredSections = sections;
     if (isRegular && studentSectionName) {
-      // Regular students can only see their own section
       filteredSections = sections.filter(section => 
         section.sectionName.toUpperCase() === studentSectionName.toUpperCase()
       );
     }
-    // Irregular students see all sections (no filtering needed)
  
-    // Build sections array with seat information
     const sectionsWithSeats = filteredSections.map(section => {
       const sectionId = section._id.toString();
       const courseIdStr = course._id.toString();
  
-      // Count regular students enrolled in this section for this course
       const enrolledRegular = regularCountMap.get(sectionId) || 0;
       const enrolledIrregular = courseIrregularMap.get(sectionId) || 0;
  
-      // Calculate available seats
-      // Use totalCapacity as fallback if regularStudents is not set
-      // For regular students: use regularStudents, fallback to totalCapacity if regularStudents is 0
-      // For irregular students: use maxIrregularStudents
       const maxRegular = section.regularStudents > 0 ? section.regularStudents : (section.totalCapacity || 0);
       const maxIrregular = section.maxIrregularStudents || 0;
  
       const availableRegular = Math.max(0, maxRegular - enrolledRegular);
       const availableIrregular = Math.max(0, maxIrregular - enrolledIrregular);
  
-      // Get section-specific schedule for this course
       let sectionSchedule = null;
       if (section.courseSchedules && section.courseSchedules instanceof Map) {
         sectionSchedule = section.courseSchedules.get(courseIdStr);
@@ -315,37 +269,28 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
         sectionSchedule = section.courseSchedules[courseIdStr];
       }
  
-      // Fall back to course default schedule if no section-specific schedule
       const schedule = sectionSchedule || course.schedule || { days: [], startTime: '', endTime: '', daySchedules: [] };
  
       return {
         id: section._id.toString(),
         sectionName: section.sectionName,
-        // Regular seats info
         regularSeats: {
           enrolled: enrolledRegular,
           available: availableRegular,
           max: maxRegular,
         },
-        // Irregular seats info
         irregularSeats: {
           enrolled: enrolledIrregular,
           available: availableIrregular,
           max: maxIrregular,
         },
-        // Legacy fields for backward compatibility
         availableSeats: isRegular ? availableRegular : availableIrregular,
         maxIrregularSeats: maxIrregular,
         enrolledStudents: section.enrolledStudents || 0,
-        // Section-specific schedule
         schedule: schedule,
       };
     });
  
-    // Check if prerequisites are clear
-    // Prerequisites are clear if:
-    // 1. Course has no prerequisites, OR
-    // 2. All prerequisite courses have been approved by advisor (status = 'approved')
     let prerequisiteClear = true;
     let missingPrerequisites = [];
  
@@ -353,7 +298,6 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
       const prerequisiteCodes = course.prerequisite.split(',').map(code => code.trim()).filter(Boolean);
  
       if (prerequisiteCodes.length > 0) {
-        // Check if all prerequisites are met (approved courses)
         const unmetPrerequisites = prerequisiteCodes.filter(code => !approvedCourseCodes.includes(code));
  
         if (unmetPrerequisites.length > 0) {
@@ -401,24 +345,20 @@ exports.getAvailableCourses = catchAsyncError(async (req, res, next) => {
   });
 });
  
-// Add course to selection
 exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   const { courseId, sectionId } = req.body;
 
-  // Validate that student is authenticated and has a valid ID
   if (!req.student || !req.student._id) {
     return next(new ErrorHandler('Student authentication required', 401));
   }
 
   const studentId = req.student._id;
 
-  // Check if registration period is active
   const registrationCheck = await checkRegistrationPeriod();
   if (!registrationCheck.allowed) {
     return next(new ErrorHandler(registrationCheck.message, 403));
   }
  
-  // Business rule: after a student gets extra credit approved once, lock further course selection
   const approvedExtraCreditEver = await ExtraCreditRequest.findOne({
     student: studentId,
     status: 'approved',
@@ -432,7 +372,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     );
   }
  
-  // Validate studentId is a valid ObjectId
   if (!studentId || !mongoose.Types.ObjectId.isValid(studentId)) {
     return next(new ErrorHandler('Invalid student ID', 400));
   }
@@ -450,7 +389,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Course is not available', 400));
   }
  
-  // Get student's section and semester - verify student exists
   const student = await Student.findById(studentId).select('section');
   if (!student) {
     return next(new ErrorHandler('Student not found', 404));
@@ -466,7 +404,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Check if course has sections - if so, sectionId is required
   const sectionsForCourse = await Section.find({
     semester: course.semester,
     status: 'active'
@@ -476,7 +413,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Section selection is required for this course', 400));
   }
  
-  // Validate section if provided
   let selectedSection = null;
   if (sectionId) {
     selectedSection = await Section.findById(sectionId);
@@ -490,18 +426,14 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
       return next(new ErrorHandler('Section is not active', 400));
     }
  
-    // Check if student is regular or irregular for this course
     const isRegular = studentSemester === course.semester;
  
-    // For regular students, validate they can only register in their registered section
     if (isRegular && student && student.section) {
       if (selectedSection.sectionName.toUpperCase() !== student.section.toUpperCase()) {
         return next(new ErrorHandler('Regular students can only register in their registered section', 400));
       }
     }
-    // Irregular students can register in any section (no additional validation needed)
  
-    // Count regular and irregular students in this section for this course
     const registrations = await CourseRegistration.find({
       course: courseId,
       section: sectionId,
@@ -528,13 +460,11 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
  
     if (isRegular) {
-      // For regular students, check if section has regular capacity
       const maxRegular = selectedSection.regularStudents || 0;
       if (enrolledRegular >= maxRegular) {
         return next(new ErrorHandler('No regular seats available in this section', 400));
       }
     } else {
-      // For irregular students, check maxIrregularStudents
       const maxIrregular = selectedSection.maxIrregularStudents || 0;
       if (enrolledIrregular >= maxIrregular) {
         return next(new ErrorHandler('No irregular seats available in this section', 400));
@@ -542,7 +472,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Check if already registered (selected, pending, approved, or rejected)
   const existingRegistration = await CourseRegistration.findOne({
     student: studentId,
     course: courseId,
@@ -565,9 +494,7 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Note: Seat availability is now checked per section above, so we don't need the general check here
  
-  // Check credit limit (26 credits per semester)
   const CREDIT_LIMIT = 26;
  
   /**
@@ -585,7 +512,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   }).populate('course');
  
   const currentCredits = currentRegistrations.reduce((sum, reg) => {
-    // Don't count the course we're trying to add if it's already selected
     if (reg.course && reg.course._id.toString() === courseId.toString() && reg.status === 'selected') {
       return sum;
     }
@@ -594,15 +520,11 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
  
   const newTotalCredits = currentCredits + (course.credits || 0);
  
-  // If adding this course would exceed the credit limit:
-  // allow selection but return a warning (submission will be blocked if not covered by extra credit).
   let creditWarning = null;
   let extraCreditsNeeded = 0;
   if (newTotalCredits > CREDIT_LIMIT) {
     extraCreditsNeeded = newTotalCredits - CREDIT_LIMIT;
  
-    // Extra credit is requested against the student's own semester/term (studentSemester),
-    // not the irregular course's semester.
     const extraCreditSemester = studentSemester || course.semester;
  
     const approvedExtraCreditRequest = await ExtraCreditRequest.findOne({
@@ -618,14 +540,10 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Check prerequisites
-  // Prerequisites are clear only if the prerequisite courses have been approved by advisor
-  // Approved courses are considered as passed and clear prerequisites for other courses
   if (course.prerequisite) {
     const prerequisiteCodes = course.prerequisite.split(',').map(code => code.trim()).filter(Boolean);
  
     if (prerequisiteCodes.length > 0) {
-      // Get all approved courses (these are considered as passed)
       const approvedRegistrations = await CourseRegistration.find({
         student: studentId,
         status: 'approved',
@@ -635,7 +553,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
         .map(reg => reg.course?.courseCode)
         .filter(Boolean);
  
-      // Check if all prerequisites are met
       const unmetPrerequisites = prerequisiteCodes.filter(code => !approvedCourseCodes.includes(code));
  
       if (unmetPrerequisites.length > 0) {
@@ -647,14 +564,11 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Create or update registration
-  // Double-check that studentId is valid and matches the authenticated student
   if (!mongoose.Types.ObjectId.isValid(studentId) || studentId.toString() !== req.student._id.toString()) {
     return next(new ErrorHandler('Invalid student ID for registration', 400));
   }
  
   if (existingRegistration) {
-    // Verify the existing registration belongs to this student
     if (existingRegistration.student.toString() !== studentId.toString()) {
       return next(new ErrorHandler('Registration does not belong to this student', 403));
     }
@@ -665,7 +579,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
     }
     await existingRegistration.save();
   } else {
-    // Explicitly use the authenticated student's ID to prevent any potential issues
     await CourseRegistration.create({
       student: req.student._id, // Use req.student._id directly to ensure correctness
       course: courseId,
@@ -685,7 +598,6 @@ exports.addCourseToSelection = catchAsyncError(async (req, res, next) => {
   });
 });
  
-// Remove course from selection
 exports.removeCourseFromSelection = catchAsyncError(async (req, res, next) => {
   const { courseId } = req.params;
   const studentId = req.student._id;
@@ -716,7 +628,6 @@ exports.removeCourseFromSelection = catchAsyncError(async (req, res, next) => {
   });
 });
  
-// Get selected courses with conflict detection
 exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
 
@@ -727,7 +638,6 @@ exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
 
   const courses = registrations.map(reg => reg.course);
 
-  // Check for conflicts
   const coursesWithConflicts = courses.map((course, index) => {
     let hasConflict = false;
     const conflictingCourses = [];
@@ -770,7 +680,6 @@ exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
     };
   });
 
-  // Calculate total credits including selected, pending, and approved courses
   const allRegistrationsForCredit = await CourseRegistration.find({
     student: studentId,
     status: { $in: ['selected', 'pending', 'approved'] },
@@ -794,11 +703,9 @@ exports.getSelectedCourses = catchAsyncError(async (req, res, next) => {
   });
 });
  
-// Submit courses for approval
 exports.submitForApproval = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
 
-  // Check if registration period is active
   const registrationCheck = await checkRegistrationPeriod();
   if (!registrationCheck.allowed) {
     return next(new ErrorHandler(registrationCheck.message, 403));
@@ -813,7 +720,6 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('No courses selected', 400));
   }
  
-  // Check for conflicts
   const courses = registrations.map(reg => reg.course);
   for (let i = 0; i < courses.length; i++) {
     for (let j = i + 1; j < courses.length; j++) {
@@ -828,10 +734,8 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Check credit limit before allowing submission
   const CREDIT_LIMIT = 26;
   
-  // Calculate total credits including selected, pending, and approved courses
   const allRegistrationsForCreditCheck = await CourseRegistration.find({
     student: studentId,
     status: { $in: ['selected', 'pending', 'approved'] },
@@ -842,8 +746,6 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
   }, 0);
 
   if (totalCredits > CREDIT_LIMIT) {
-    // Extra credit requests are tied to the student's own semester/term (based on section),
-    // not the (possibly different) semester of an irregular course.
     const student = await Student.findById(studentId).select('section');
     let studentSemester = null;
     if (student && student.section) {
@@ -858,7 +760,6 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
 
     const extraCreditSemester = studentSemester || (courses.length > 0 ? courses[0].semester : null);
 
-    // Check if student has an approved extra credit request for this semester
     const ExtraCreditRequest = require('../models/extraCreditRequestModel');
     const approvedExtraCreditRequest = await ExtraCreditRequest.findOne({
       student: studentId,
@@ -874,7 +775,6 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
       ));
     }
 
-    // Check if the approved extra credit request covers the needed credits
     const extraCreditsNeeded = totalCredits - CREDIT_LIMIT;
     if (extraCreditsNeeded > approvedExtraCreditRequest.requestedCredits) {
       return next(new ErrorHandler(
@@ -884,7 +784,6 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
     }
   }
  
-  // Update all registrations
   const now = new Date();
   await CourseRegistration.updateMany(
     {
@@ -904,7 +803,6 @@ exports.submitForApproval = catchAsyncError(async (req, res, next) => {
   });
 });
  
-// Get registration status
 exports.getRegistrationStatus = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
   const { semester } = req.query;
@@ -919,12 +817,10 @@ exports.getRegistrationStatus = catchAsyncError(async (req, res, next) => {
     .populate('section')
     .sort({ createdAt: -1 });
  
-  // Get student's section to access section-specific instructors
   const Student = require('../models/studentModel');
   const student = await Student.findById(studentId).populate('section');
   const studentSection = student?.section;
  
-  // Fetch all teachers to map instructor IDs to names
   const Teacher = require('../models/teacherModel');
   const teachers = await Teacher.find({}, 'teacherId name');
   const teacherMap = new Map();
@@ -939,17 +835,14 @@ exports.getRegistrationStatus = catchAsyncError(async (req, res, next) => {
     const totalSeats = reg.course.regularSeats + reg.course.irregularSeats;
     const availableSeats = Math.max(0, totalSeats - enrolledCount);
  
-    // Resolve instructor name(s)
     let instructorName = '';
     const sectionToCheckForInstructor = reg.section || studentSection;
     const sectionName = sectionToCheckForInstructor?.sectionName;
  
-    // Check if course uses section-specific instructor assignments
     const hasSectionSpecificInstructors = reg.course.instructorSections && 
       Array.isArray(reg.course.instructorSections) && 
       reg.course.instructorSections.length > 0;
  
-    // First, try to find section-specific instructor
     if (sectionName && hasSectionSpecificInstructors) {
       const sectionInstructor = reg.course.instructorSections.find(instSec => 
         instSec.sections && instSec.sections.includes(sectionName)
@@ -958,20 +851,16 @@ exports.getRegistrationStatus = catchAsyncError(async (req, res, next) => {
       if (sectionInstructor && sectionInstructor.instructorId) {
         instructorName = teacherMap.get(sectionInstructor.instructorId) || sectionInstructor.instructorId;
       }
-      // If section-specific assignments exist but this section has no instructor, leave as empty (will show TBA)
     } else if (!hasSectionSpecificInstructors) {
-      // Only use general instructors if section-specific assignments are NOT being used
       if (Array.isArray(reg.course.instructors) && reg.course.instructors.length > 0) {
         const instructorNames = reg.course.instructors
           .map(id => teacherMap.get(id) || id)
           .filter(Boolean);
         instructorName = instructorNames.length > 0 ? instructorNames.join(', ') : '';
       } else if (reg.course.instructor) {
-        // Check if instructor is an ID or a name
         instructorName = teacherMap.get(reg.course.instructor) || reg.course.instructor;
       }
     }
-    // If hasSectionSpecificInstructors is true but no match found, instructorName remains empty (TBA)
  
     return {
       id: reg._id,
@@ -1000,7 +889,6 @@ exports.getRegistrationStatus = catchAsyncError(async (req, res, next) => {
     };
   });
  
-  // Calculate summary
   const summary = {
     total: registrations.length,
     selected: registrations.filter(r => r.status === 'selected').length,

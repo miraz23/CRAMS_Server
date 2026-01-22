@@ -7,12 +7,10 @@ const CourseRegistration = require('../models/courseRegistrationModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 
-// Student: Create extra credit request
 exports.createExtraCreditRequest = catchAsyncError(async (req, res, next) => {
   const { semester, requestedCredits, reason } = req.body;
   const studentId = req.student._id;
 
-  // Business rule: one extra credit request per student (ever)
   const existingAnyRequest = await ExtraCreditRequest.findOne({ student: studentId }).select('_id status semester');
   if (existingAnyRequest) {
     return next(
@@ -39,7 +37,6 @@ exports.createExtraCreditRequest = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Reason cannot exceed 500 characters', 400));
   }
 
-  // Create the request
   const extraCreditRequest = await ExtraCreditRequest.create({
     student: studentId,
     semester: semester,
@@ -57,7 +54,6 @@ exports.createExtraCreditRequest = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Student: Get my extra credit requests
 exports.getMyExtraCreditRequests = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
   const { semester } = req.query;
@@ -78,12 +74,10 @@ exports.getMyExtraCreditRequests = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Advisor: Get pending extra credit requests for my students
 exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) => {
   const teacherId = req.teacher.teacherId;
   const CREDIT_LIMIT = 26;
 
-  // Find all sections assigned to this advisor
   const sections = await Section.find({
     assignedAdvisor: teacherId,
     status: 'active',
@@ -97,12 +91,10 @@ exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) =
     });
   }
 
-  // Get section names assigned to this advisor
   const sectionNames = sections
     .map((s) => (s.sectionName ? s.sectionName.trim().toUpperCase() : null))
     .filter(Boolean);
 
-  // Get all students registered in advisor's sections
   const students = await Student.find({
     section: { $in: sectionNames },
   });
@@ -117,7 +109,6 @@ exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) =
 
   const studentIds = students.map((s) => s._id);
 
-  // Get pending extra credit requests for these students
   const requests = await ExtraCreditRequest.find({
     student: { $in: studentIds },
     status: 'pending',
@@ -133,7 +124,6 @@ exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) =
     });
   }
 
-  // Pre-compute credit summaries (approved vs selected) per student+semester
   const studentObjectIds = [];
   const semesters = new Set();
 
@@ -211,7 +201,6 @@ exports.getPendingExtraCreditRequests = catchAsyncError(async (req, res, next) =
   });
 });
 
-// Advisor: Approve extra credit request
 exports.approveExtraCreditRequest = catchAsyncError(async (req, res, next) => {
   const { requestId } = req.params;
   const { advisorFeedback } = req.body;
@@ -231,7 +220,6 @@ exports.approveExtraCreditRequest = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('This request has already been reviewed', 400));
   }
 
-  // Verify that the student belongs to this advisor's sections
   const sections = await Section.find({
     assignedAdvisor: req.teacher.teacherId,
     status: 'active',
@@ -248,7 +236,6 @@ exports.approveExtraCreditRequest = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('You are not authorized to review this request', 403));
   }
 
-  // Update request
   request.status = 'approved';
   request.reviewedAt = new Date();
   request.reviewedBy = teacherId;
@@ -267,7 +254,6 @@ exports.approveExtraCreditRequest = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Advisor: Reject extra credit request
 exports.rejectExtraCreditRequest = catchAsyncError(async (req, res, next) => {
   const { requestId } = req.params;
   const { advisorFeedback } = req.body;
@@ -291,7 +277,6 @@ exports.rejectExtraCreditRequest = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('This request has already been reviewed', 400));
   }
 
-  // Verify that the student belongs to this advisor's sections
   const sections = await Section.find({
     assignedAdvisor: req.teacher.teacherId,
     status: 'active',
@@ -308,7 +293,6 @@ exports.rejectExtraCreditRequest = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('You are not authorized to review this request', 403));
   }
 
-  // Update request
   request.status = 'rejected';
   request.reviewedAt = new Date();
   request.reviewedBy = teacherId;

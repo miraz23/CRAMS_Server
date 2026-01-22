@@ -34,7 +34,6 @@ exports.registerTeacher = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Missing fields', 400));
   }
   
-  // Validate email domain for teachers
   if (!email.endsWith('@iiuc.ac.bd')) {
     return next(new ErrorHandler('Only emails with @iiuc.ac.bd domain are allowed for teacher registration', 400));
   }
@@ -59,7 +58,6 @@ exports.loginTeacher = catchAsyncError(async(req, res, next) => {
     return next(new ErrorHandler('Missing fields', 400));
   }
 
-  // Find a teacher by email and explicitly include the password field in the query result
   const teacher = await Teacher.findOne({ email }).select('+password');
   if(!teacher){
     return next(new ErrorHandler('Invalid email or password', 401));
@@ -118,7 +116,6 @@ exports.updateTeacher = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Teacher not found', 400));
   }
  
-  // Check if at least one field is provided
   const hasUpdateFields = mobileNumber || address || teacherImage;
  
   if (!hasUpdateFields) {
@@ -130,7 +127,6 @@ exports.updateTeacher = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Teacher not found', 404));
   }
  
-  // Update fields
   if (mobileNumber) teacher.mobileNumber = mobileNumber;
   if (address) teacher.address = address;
   if (teacherImage !== undefined) teacher.teacherImage = teacherImage;
@@ -158,7 +154,6 @@ exports.deleteTeacher = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Advisor dashboard overview for teachers
 exports.getAdvisorDashboard = catchAsyncError(async (req, res) => {
   const { semester } = req.query;
 
@@ -287,7 +282,6 @@ exports.getAdvisorDashboard = catchAsyncError(async (req, res) => {
   });
 });
 
-// Get pending reviews for advisor
 exports.getPendingReviews = catchAsyncError(async (req, res) => {
   const { semester } = req.query;
 
@@ -296,13 +290,11 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
     registrationQuery.semester = semester;
   }
 
-  // Get all pending registrations with populated student and course data
   const registrations = await CourseRegistration.find(registrationQuery)
     .populate('student')
     .populate('course')
     .sort({ submittedAt: -1 });
 
-  // Group registrations by student, storing registration references
   const pendingByStudent = registrations.reduce((acc, reg) => {
     const studentId = reg.student?._id?.toString() || reg.student?.toString();
     if (!studentId || !reg.student || !reg.course) return acc;
@@ -326,7 +318,6 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
     acc[studentId].registrations.push(reg);
     acc[studentId].totalRequestedCredits += credit;
 
-    // Update submittedAt to earliest submission time
     if (reg.submittedAt && (!acc[studentId].submittedAt || reg.submittedAt < acc[studentId].submittedAt)) {
       acc[studentId].submittedAt = reg.submittedAt;
     }
@@ -334,14 +325,12 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
     return acc;
   }, {});
 
-  // Calculate current credits and check for issues for each student
   const studentIds = Object.keys(pendingByStudent);
   const reviewsWithDetails = await Promise.all(
     studentIds.map(async (studentId) => {
       const studentData = pendingByStudent[studentId];
       const studentMongoId = studentData.studentId;
 
-      // Get all approved courses for current credits calculation
       const approvedRegistrations = await CourseRegistration.find({
         student: studentMongoId,
         status: 'approved',
@@ -352,12 +341,10 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
         0
       );
 
-      // Process each registration and check for issues
       const courses = studentData.registrations.map((reg) => {
         const courseData = reg.course;
         const issues = [];
 
-        // Check prerequisites
         if (courseData.prerequisite) {
           const prerequisiteCodes = courseData.prerequisite.split(',').map(code => code.trim());
           const completedCourseCodes = approvedRegistrations.map(reg => reg.course?.courseCode).filter(Boolean);
@@ -372,7 +359,6 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
           }
         }
 
-        // Note: Seat availability is already checked during course registration, so we don't check it here
 
         return {
           registrationId: reg._id,
@@ -393,7 +379,6 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
     })
   );
 
-  // Format schedule for display (e.g., "Sun 10:00 AM - 12:00 PM" or "Mon, Wed 2:00 PM - 3:30 PM")
   const formatSchedule = (schedule) => {
     if (!schedule || !schedule.days || schedule.days.length === 0) {
       return '';
@@ -405,7 +390,6 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
     return time ? `${days} ${time}` : days;
   };
 
-  // Format date for display (e.g., "Mar 3, 2025 10:30 AM")
   const formatDateTime = (date) => {
     if (!date) return null;
     const d = new Date(date);
@@ -424,7 +408,6 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
     return `${month} ${day}, ${year} ${timeStr}`;
   };
 
-  // Format the response data
   const formattedReviews = reviewsWithDetails.map((review) => ({
     studentId: review.studentId,
     studentName: review.studentName,
@@ -450,7 +433,6 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
     })),
   }));
 
-  // Calculate summary statistics
   const totalPending = formattedReviews.length;
   const withIssues = formattedReviews.filter(review => review.hasIssues).length;
 
@@ -467,21 +449,17 @@ exports.getPendingReviews = catchAsyncError(async (req, res) => {
   });
 });
 
-// Get my students for advisor dashboard
 exports.getMyStudents = catchAsyncError(async (req, res) => {
   const teacherId = req.teacher.teacherId;
   const { search, semester } = req.query;
 
-  // Find all sections assigned to this advisor
   const sections = await Section.find({ 
     assignedAdvisor: teacherId,
     status: 'active'
   });
 
-  // Get section names assigned to this advisor (normalized to uppercase)
   const sectionNames = sections.map(s => s.sectionName ? s.sectionName.trim().toUpperCase() : null).filter(Boolean);
 
-  // If advisor has no sections, return empty result
   if (sectionNames.length === 0) {
     return res.status(200).json({
       success: true,
@@ -497,12 +475,10 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     });
   }
 
-  // Get all students registered in advisor's sections
   const students = await Student.find({ 
     section: { $in: sectionNames }
   });
 
-  // If no students found, return empty result
   if (students.length === 0) {
     return res.status(200).json({
       success: true,
@@ -518,10 +494,8 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     });
   }
 
-  // Get student IDs
   const studentIds = students.map(s => s._id);
 
-  // Build query for course registrations
   const registrationQuery = {
     student: { $in: studentIds }
   };
@@ -530,8 +504,6 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     registrationQuery.semester = semester;
   }
 
-  // Get section info for students to determine their semester FIRST
-  // This ensures we use the student's actual semester, not the course semester
   const studentSections = await Section.find({ 
     sectionName: { $in: sectionNames },
     status: 'active'
@@ -542,7 +514,6 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     sectionSemesterMap[section.sectionName] = section.semester;
   });
 
-  // Create a map of student ID to their actual semester from their section
   const studentSemesterMap = {};
   students.forEach((student) => {
     const studentSection = student.section ? student.section.toUpperCase() : null;
@@ -552,12 +523,10 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     studentSemesterMap[student._id.toString()] = semesterFromSection;
   });
 
-  // Get all course registrations for students in advisor's sections
   const registrations = await CourseRegistration.find(registrationQuery)
     .populate('student')
     .populate('course');
 
-  // Get unique students
   const studentMap = new Map();
   
   registrations.forEach((reg) => {
@@ -566,7 +535,6 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     const studentId = reg.student._id.toString();
     
     if (!studentMap.has(studentId)) {
-      // Use the student's actual semester from their section, not from course registrations
       const studentSemester = studentSemesterMap[studentId] || null;
       
       studentMap.set(studentId, {
@@ -587,19 +555,15 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     const student = studentMap.get(studentId);
     student.registrations.push(reg);
     
-    // Count pending registrations
     if (reg.status === 'pending') {
       student.pendingCount++;
     }
     
-    // DO NOT update semester based on course registrations
-    // The student's semester should remain their actual semester from their section
   });
 
   students.forEach((student) => {
     const studentId = student._id.toString();
     if (!studentMap.has(studentId)) {
-      // Get semester from student's section (already mapped above)
       const studentSemester = studentSemesterMap[studentId] || null;
       
       studentMap.set(studentId, {
@@ -618,10 +582,8 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     }
   });
 
-  // Process each student to calculate credits and CGPA
   const studentsArray = await Promise.all(
     Array.from(studentMap.values()).map(async (student) => {
-      // Calculate total credits from approved courses
       const approvedRegistrations = student.registrations.filter(
         (reg) => reg.status === 'approved' && reg.course
       );
@@ -631,17 +593,9 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
         0
       );
 
-      // Calculate CGPA (simplified - assuming 4.0 scale)
-      // In a real system, this would use grades from a grades model
-      // For now, we'll use a placeholder or calculate based on approved courses
-      // Since we don't have grades, we'll set CGPA to null or calculate a simple average
       let cgpa = null;
       
-      // If you have a grades model, you would calculate CGPA here
-      // For now, we'll use a placeholder value or leave it null
-      // You can replace this with actual CGPA calculation when grades are available
       
-      // Extract semester number from semester string (e.g., "7th Semester" -> 7)
       let semesterNumber = null;
       if (student.currentSemester) {
         const match = student.currentSemester.match(/(\d+)/);
@@ -668,7 +622,6 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     })
   );
 
-  // Apply search filter if provided
   let filteredStudents = studentsArray;
   if (search && search.trim()) {
     const searchLower = search.toLowerCase().trim();
@@ -681,14 +634,12 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
     });
   }
 
-  // Calculate summary statistics
   const totalStudents = filteredStudents.length;
   const totalPendingReviews = filteredStudents.reduce(
     (sum, student) => sum + student.pendingCount,
     0
   );
   
-  // Calculate average CGPA (excluding null values)
   const cgpaValues = filteredStudents
     .map((s) => s.cgpa)
     .filter((cgpa) => cgpa !== null && cgpa !== undefined);
@@ -710,7 +661,6 @@ exports.getMyStudents = catchAsyncError(async (req, res) => {
   });
 });
 
-// Get single student details for advisor
 exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
   const { studentId } = req.params;
   const teacherId = req.teacher.teacherId;
@@ -719,21 +669,17 @@ exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student ID is required', 400));
   }
 
-  // Find student
   const student = await Student.findById(studentId);
   if (!student) {
     return next(new ErrorHandler('Student not found', 404));
   }
 
-  // Verify student belongs to advisor's sections (optional check)
-  // Get advisor's sections
   const sections = await Section.find({ 
     assignedAdvisor: teacherId,
     status: 'active'
   });
   const advisorSemesters = [...new Set(sections.map(s => s.semester))];
 
-  // Get student's course registrations
   const registrations = await CourseRegistration.find({
     student: studentId,
     semester: { $in: advisorSemesters }
@@ -741,7 +687,6 @@ exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
     .populate('course')
     .sort({ semester: -1, createdAt: -1 });
 
-  // Calculate student statistics
   const approvedRegistrations = registrations.filter((reg) => reg.status === 'approved');
   const pendingRegistrations = registrations.filter((reg) => reg.status === 'pending');
   const rejectedRegistrations = registrations.filter((reg) => reg.status === 'rejected');
@@ -751,12 +696,10 @@ exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
     0
   );
 
-  // Get current semester (most recent)
   const currentSemester = registrations.length > 0 
     ? registrations[0].semester 
     : null;
 
-  // Extract semester number
   let semesterNumber = null;
   if (currentSemester) {
     const match = currentSemester.match(/(\d+)/);
@@ -765,7 +708,6 @@ exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
     }
   }
 
-  // Format registrations for response
   const courseRegistrations = registrations.map((reg) => ({
     registrationId: reg._id,
     courseId: reg.course?._id || null,
@@ -815,12 +757,10 @@ exports.getStudentDetails = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get approved courses for advisor dashboard
 exports.getApprovedCourses = catchAsyncError(async (req, res) => {
   const teacherId = req.teacher.teacherId;
   const { semester, startDate, endDate, studentId, courseCode, format } = req.query;
 
-  // Build query for approved courses
   const registrationQuery = { status: 'approved' };
   
   if (semester && semester !== 'All Semesters') {
@@ -839,42 +779,35 @@ exports.getApprovedCourses = catchAsyncError(async (req, res) => {
     }
   }
 
-  // Get advisor's sections to filter by assigned students
   const sections = await Section.find({ 
     assignedAdvisor: teacherId,
     status: 'active'
   });
   const advisorSemesters = [...new Set(sections.map(s => s.semester))];
 
-  // If advisor has assigned semesters, filter by them (unless specific semester is provided)
   if (advisorSemesters.length > 0 && !semester) {
     registrationQuery.semester = { $in: advisorSemesters };
   }
 
-  // Get all approved registrations
   let registrations = await CourseRegistration.find(registrationQuery)
     .populate('student')
     .populate('course')
     .sort({ approvedAt: -1 });
 
-  // Filter by studentId if provided
   if (studentId) {
     registrations = registrations.filter(reg => 
       reg.student && reg.student.studentId && reg.student.studentId.toLowerCase().includes(studentId.toLowerCase())
     );
   }
 
-  // Filter by courseCode if provided
   if (courseCode) {
     registrations = registrations.filter(reg => 
       reg.course && reg.course.courseCode && reg.course.courseCode.toLowerCase().includes(courseCode.toLowerCase())
     );
   }
 
-  // Calculate summary statistics
   const totalApproved = registrations.length;
 
-  // Calculate "This Week" - approved courses in the current week
   const now = new Date();
   const startOfWeek = new Date(now);
   startOfWeek.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
@@ -884,12 +817,10 @@ exports.getApprovedCourses = catchAsyncError(async (req, res) => {
     reg.approvedAt && reg.approvedAt >= startOfWeek
   ).length;
 
-  // Calculate total credits
   const totalCredits = registrations.reduce((sum, reg) => 
     sum + (reg.course?.credits || 0), 0
   );
 
-  // Format date helper (e.g., "Mar 1, 2025")
   const formatApprovalDate = (date) => {
     if (!date) return null;
     const d = new Date(date);
@@ -900,7 +831,6 @@ exports.getApprovedCourses = catchAsyncError(async (req, res) => {
     return `${month} ${day}, ${year}`;
   };
 
-  // Format recent approvals
   const recentApprovals = registrations.map((reg) => ({
     registrationId: reg._id,
     courseCode: reg.course?.courseCode || '',
@@ -916,7 +846,6 @@ exports.getApprovedCourses = catchAsyncError(async (req, res) => {
     semester: reg.semester,
   }));
 
-  // If export format is requested (CSV)
   if (format === 'csv' || format === 'export') {
     const csvHeader = 'Course Code,Course Name,Credits,Student ID,Student Name,Approval Date,Feedback,Semester\n';
     const csvRows = recentApprovals.map(approval => {
@@ -946,7 +875,6 @@ exports.getApprovedCourses = catchAsyncError(async (req, res) => {
     return res.status(200).send(csvHeader + csvRows);
   }
 
-  // Return JSON response
   res.status(200).json({
     success: true,
     message: 'Approved courses fetched successfully',
@@ -961,7 +889,6 @@ exports.getApprovedCourses = catchAsyncError(async (req, res) => {
   });
 });
 
-// Approve a single course registration
 exports.approveRegistration = catchAsyncError(async (req, res, next) => {
   const { registrationId } = req.params;
   const { feedback } = req.body;
@@ -1001,7 +928,6 @@ exports.approveRegistration = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Reject a single course registration
 exports.rejectRegistration = catchAsyncError(async (req, res, next) => {
   const { registrationId } = req.params;
   const { rejectionReason } = req.body;
@@ -1041,7 +967,6 @@ exports.rejectRegistration = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Bulk approve all registrations for a student
 exports.bulkApproveRegistrations = catchAsyncError(async (req, res, next) => {
   const { studentId } = req.params;
   const { registrationIds, feedback } = req.body;
@@ -1050,21 +975,18 @@ exports.bulkApproveRegistrations = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student ID is required', 400));
   }
 
-  // Build query - if registrationIds are provided, use them; otherwise approve all pending for student
   const query = {
     student: studentId,
     status: 'pending',
   };
 
   if (registrationIds && Array.isArray(registrationIds) && registrationIds.length > 0) {
-    // Filter out any null/undefined values and ensure we have valid IDs
     const validIds = registrationIds.filter(id => id != null && id !== '');
     if (validIds.length > 0) {
       query._id = { $in: validIds };
     }
   }
 
-  // Find all matching registrations first
   const registrations = await CourseRegistration.find(query)
     .populate('course');
 
@@ -1072,7 +994,6 @@ exports.bulkApproveRegistrations = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('No pending registrations found', 404));
   }
 
-  // Get the actual IDs from the found registrations to ensure we update the correct ones
   const idsToUpdate = registrations.map(reg => reg._id);
 
   const now = new Date();
@@ -1084,7 +1005,6 @@ exports.bulkApproveRegistrations = catchAsyncError(async (req, res, next) => {
     updateData.advisorFeedback = feedback;
   }
 
-  // Update using the actual IDs found
   const updateResult = await CourseRegistration.updateMany(
     { _id: { $in: idsToUpdate } },
     updateData
@@ -1100,7 +1020,6 @@ exports.bulkApproveRegistrations = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Bulk reject all registrations for a student
 exports.bulkRejectRegistrations = catchAsyncError(async (req, res, next) => {
   const { studentId } = req.params;
   const { registrationIds, rejectionReason } = req.body;
@@ -1109,21 +1028,18 @@ exports.bulkRejectRegistrations = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student ID is required', 400));
   }
 
-  // Build query - if registrationIds are provided, use them; otherwise reject all pending for student
   const query = {
     student: studentId,
     status: 'pending',
   };
 
   if (registrationIds && Array.isArray(registrationIds) && registrationIds.length > 0) {
-    // Filter out any null/undefined values and ensure we have valid IDs
     const validIds = registrationIds.filter(id => id != null && id !== '');
     if (validIds.length > 0) {
       query._id = { $in: validIds };
     }
   }
 
-  // Find all matching registrations first
   const registrations = await CourseRegistration.find(query)
     .populate('course');
 
@@ -1131,7 +1047,6 @@ exports.bulkRejectRegistrations = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('No pending registrations found', 404));
   }
 
-  // Get the actual IDs from the found registrations to ensure we update the correct ones
   const idsToUpdate = registrations.map(reg => reg._id);
 
   const now = new Date();
@@ -1143,7 +1058,6 @@ exports.bulkRejectRegistrations = catchAsyncError(async (req, res, next) => {
     updateData.rejectionReason = rejectionReason;
   }
 
-  // Update using the actual IDs found
   const updateResult = await CourseRegistration.updateMany(
     { _id: { $in: idsToUpdate } },
     updateData

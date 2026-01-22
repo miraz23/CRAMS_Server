@@ -44,7 +44,6 @@ const extraCreditRequestSchema = new mongoose.Schema({
   timestamps: true,
 });
 
-// Ensure one pending request per student per semester
 extraCreditRequestSchema.index({ student: 1, semester: 1, status: 1 }, { 
   unique: true,
   partialFilterExpression: { status: 'pending' }

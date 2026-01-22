@@ -31,7 +31,6 @@ exports.loginStudent = catchAsyncError(async(req, res, next) => {
     return next(new ErrorHandler('Missing fields', 400));
   }
 
-  // Find a student by studentId and explicitly include the password field in the query result
   const student = await Student.findOne({ studentId }).select('+password');
   if(!student){
     return next(new ErrorHandler('Invalid student ID or password', 401));
@@ -81,7 +80,6 @@ exports.updateStudent = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student not found', 400));
   }
  
-  // Check if at least one field is provided
   const hasUpdateFields = mobileNumber || presentAddress || permanentAddress || studentImage;
  
   if (!hasUpdateFields) {
@@ -93,7 +91,6 @@ exports.updateStudent = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student not found', 404));
   }
  
-  // Update fields
   if (mobileNumber) student.mobileNumber = mobileNumber;
   if (presentAddress) student.presentAddress = presentAddress;
   if (permanentAddress) student.permanentAddress = permanentAddress;
@@ -122,7 +119,6 @@ exports.deleteStudent = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get the authenticated student's class schedule
 exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
   const { semester, status } = req.query;
   const statusFilter = status
@@ -141,12 +137,10 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
     .populate('course')
     .populate('section');
   
-  // Get student's section to access section-specific schedules
   const Student = require('../models/studentModel');
   const student = await Student.findById(req.student._id).populate('section');
   const studentSection = student?.section;
 
-  // Fetch all teachers to map instructor IDs to names
   const Teacher = require('../models/teacherModel');
   const teachers = await Teacher.find({}, 'teacherId name');
   const teacherMap = new Map();
@@ -156,7 +150,6 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
     }
   });
 
-  // Helper to sort time strings like "10:00 AM"
   const parseTime = (timeStr) => {
     if (!timeStr) return Infinity;
     const [time, period] = timeStr.split(' ');
@@ -176,7 +169,6 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
     const course = reg.course;
     const courseId = course._id.toString();
     
-    // Check for section-specific schedule first
     let courseSchedule = null;
     const sectionToCheck = reg.section || studentSection;
     
@@ -186,29 +178,24 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
         courseSchedule = sectionSchedule;
       }
     } else if (sectionToCheck && sectionToCheck.courseSchedules && typeof sectionToCheck.courseSchedules === 'object') {
-      // Handle case where courseSchedules is already an object (from JSON)
       const sectionSchedule = sectionToCheck.courseSchedules[courseId];
       if (sectionSchedule) {
         courseSchedule = sectionSchedule;
       }
     }
     
-    // Fall back to course default schedule if no section-specific schedule found
     if (!courseSchedule) {
       courseSchedule = course.schedule || { days: [], startTime: '', endTime: '', daySchedules: [] };
     }
 
-    // Resolve instructor name(s)
     let instructorName = '';
     const sectionToCheckForInstructor = reg.section || studentSection;
     const sectionName = sectionToCheckForInstructor?.sectionName;
 
-    // Check if course uses section-specific instructor assignments
     const hasSectionSpecificInstructors = course.instructorSections && 
       Array.isArray(course.instructorSections) && 
       course.instructorSections.length > 0;
 
-    // First, try to find section-specific instructor
     if (sectionName && hasSectionSpecificInstructors) {
       const sectionInstructor = course.instructorSections.find(instSec => 
         instSec.sections && instSec.sections.includes(sectionName)
@@ -217,20 +204,16 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
       if (sectionInstructor && sectionInstructor.instructorId) {
         instructorName = teacherMap.get(sectionInstructor.instructorId) || sectionInstructor.instructorId;
       }
-      // If section-specific assignments exist but this section has no instructor, leave as empty (will show TBA)
     } else if (!hasSectionSpecificInstructors) {
-      // Only use general instructors if section-specific assignments are NOT being used
       if (Array.isArray(course.instructors) && course.instructors.length > 0) {
         const instructorNames = course.instructors
           .map(id => teacherMap.get(id) || id)
           .filter(Boolean);
         instructorName = instructorNames.length > 0 ? instructorNames.join(', ') : '';
       } else if (course.instructor) {
-        // Check if instructor is an ID or a name
         instructorName = teacherMap.get(course.instructor) || course.instructor;
       }
     }
-    // If hasSectionSpecificInstructors is true but no match found, instructorName remains empty (TBA)
 
     const courseInfo = {
       id: course._id,
@@ -247,7 +230,6 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
 
     courses.push(courseInfo);
 
-    // Handle new daySchedules structure (per-day scheduling)
     if (courseSchedule.daySchedules && Array.isArray(courseSchedule.daySchedules) && courseSchedule.daySchedules.length > 0) {
       courseSchedule.daySchedules.forEach((daySchedule) => {
         const day = daySchedule.day;
@@ -264,7 +246,6 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
         });
       });
     } else {
-      // Handle legacy structure (single time for all days)
       (courseSchedule.days || []).forEach((day) => {
         if (!daysTemplate[day]) return;
         daysTemplate[day].push({
@@ -281,7 +262,6 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
     }
   });
 
-  // Sort classes within each day by start time and drop empty days
   const weeklySchedule = Object.keys(daysTemplate).reduce((acc, day) => {
     if (daysTemplate[day].length === 0) return acc;
     acc[day] = daysTemplate[day].sort(
@@ -309,18 +289,15 @@ exports.getStudentSchedule = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get all courses for the student's section (routine) - not dependent on registration
 exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
   const { semester } = req.query;
 
-  // Get student's section name (stored as string in student model)
   const student = await Student.findById(req.student._id).select('section');
   
   if (!student || !student.section) {
     return next(new ErrorHandler('Student section not found', 404));
   }
 
-  // Find the Section document by sectionName
   const Section = require('../models/sectionModel');
   const studentSection = await Section.findOne({ 
     sectionName: student.section,
@@ -331,20 +308,17 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student section not found', 404));
   }
 
-  // Determine the semester to use
   const sectionSemester = semester || studentSection.semester;
 
   if (!sectionSemester) {
     return next(new ErrorHandler('Semester information not available', 400));
   }
 
-  // Fetch all active courses for the section's semester
   const allCourses = await Course.find({ 
     status: 'active',
     semester: sectionSemester 
   });
 
-  // Fetch all teachers to map instructor IDs to names
   const Teacher = require('../models/teacherModel');
   const teachers = await Teacher.find({}, 'teacherId name');
   const teacherMap = new Map();
@@ -354,7 +328,6 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
     }
   });
 
-  // Helper to sort time strings like "10:00 AM"
   const parseTime = (timeStr) => {
     if (!timeStr) return Infinity;
     const [time, period] = timeStr.split(' ');
@@ -372,7 +345,6 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
   allCourses.forEach((course) => {
     const courseId = course._id.toString();
     
-    // Check for section-specific schedule first
     let courseSchedule = null;
     
     if (studentSection.courseSchedules && studentSection.courseSchedules instanceof Map) {
@@ -381,27 +353,22 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
         courseSchedule = sectionSchedule;
       }
     } else if (studentSection.courseSchedules && typeof studentSection.courseSchedules === 'object') {
-      // Handle case where courseSchedules is already an object (from JSON)
       const sectionSchedule = studentSection.courseSchedules[courseId];
       if (sectionSchedule) {
         courseSchedule = sectionSchedule;
       }
     }
     
-    // Fall back to course default schedule if no section-specific schedule found
     if (!courseSchedule) {
       courseSchedule = course.schedule || { days: [], startTime: '', endTime: '', daySchedules: [] };
     }
 
-    // Resolve instructor name(s)
     let instructorName = '';
 
-    // Check if course uses section-specific instructor assignments
     const hasSectionSpecificInstructors = course.instructorSections && 
       Array.isArray(course.instructorSections) && 
       course.instructorSections.length > 0;
 
-    // First, try to find section-specific instructor
     if (sectionName && hasSectionSpecificInstructors) {
       const sectionInstructor = course.instructorSections.find(instSec => 
         instSec.sections && instSec.sections.includes(sectionName)
@@ -410,20 +377,16 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
       if (sectionInstructor && sectionInstructor.instructorId) {
         instructorName = teacherMap.get(sectionInstructor.instructorId) || sectionInstructor.instructorId;
       }
-      // If section-specific assignments exist but this section has no instructor, leave as empty (will show TBA)
     } else if (!hasSectionSpecificInstructors) {
-      // Only use general instructors if section-specific assignments are NOT being used
       if (Array.isArray(course.instructors) && course.instructors.length > 0) {
         const instructorNames = course.instructors
           .map(id => teacherMap.get(id) || id)
           .filter(Boolean);
         instructorName = instructorNames.length > 0 ? instructorNames.join(', ') : '';
       } else if (course.instructor) {
-        // Check if instructor is an ID or a name
         instructorName = teacherMap.get(course.instructor) || course.instructor;
       }
     }
-    // If hasSectionSpecificInstructors is true but no match found, instructorName remains empty (TBA)
 
     const courseInfo = {
       id: course._id,
@@ -438,7 +401,6 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
 
     courses.push(courseInfo);
 
-    // Handle new daySchedules structure (per-day scheduling)
     if (courseSchedule.daySchedules && Array.isArray(courseSchedule.daySchedules) && courseSchedule.daySchedules.length > 0) {
       courseSchedule.daySchedules.forEach((daySchedule) => {
         const day = daySchedule.day;
@@ -454,7 +416,6 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
         });
       });
     } else {
-      // Handle legacy structure (single time for all days)
       (courseSchedule.days || []).forEach((day) => {
         if (!daysTemplate[day]) return;
         daysTemplate[day].push({
@@ -470,7 +431,6 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
     }
   });
 
-  // Sort classes within each day by start time and drop empty days
   const weeklySchedule = Object.keys(daysTemplate).reduce((acc, day) => {
     if (daysTemplate[day].length === 0) return acc;
     acc[day] = daysTemplate[day].sort(
@@ -498,7 +458,6 @@ exports.getStudentRoutine = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get system settings (public info for students)
 exports.getSystemSettings = catchAsyncError(async (req, res, next) => {
   const SystemSettings = require('../models/systemSettingsModel');
   const settings = await SystemSettings.getSettings();

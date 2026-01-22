@@ -3,7 +3,6 @@ const adminController = require('../controllers/adminController');
 const auth = require('../middleware/Auth');
 const upload = require('../middleware/upload');
 
-// get all admin details
 router.route('/')
   .get(
     auth.checkUserAuthentication,
@@ -11,7 +10,6 @@ router.route('/')
     adminController.getAllAdminDetails
   );
 
-// CSV upload for student creation (Super Admin and Admin)
 router.route('/upload-student-csv')
   .post(
     auth.checkUserAuthentication,
@@ -20,7 +18,6 @@ router.route('/upload-student-csv')
     adminController.uploadStudentCSV
   );
 
-// CSV upload for admin creation (Super Admin only)
 router.route('/upload-csv')
   .post(
     auth.checkUserAuthentication,
@@ -29,7 +26,6 @@ router.route('/upload-csv')
     adminController.uploadAdminCSV
   );
 
-// CSV upload for teacher creation (Super Admin only)
 router.route('/upload-teacher-csv')
   .post(
     auth.checkUserAuthentication,
@@ -38,16 +34,12 @@ router.route('/upload-teacher-csv')
     adminController.uploadTeacherCSV
   );
 
-// admin login
 router.route('/login')
   .post(adminController.loginAdmin);
 
-// admin logout
 router.route('/logout')
   .post(adminController.logoutAdmin);
 
-// Course Management Routes
-// Add new course
 router.route('/courses')
   .post(
     auth.checkUserAuthentication,
@@ -60,7 +52,6 @@ router.route('/courses')
     adminController.getCourses
   );
 
-// Get, update, or delete single course
 router.route('/courses/:id')
   .get(
     auth.checkUserAuthentication,
@@ -78,7 +69,6 @@ router.route('/courses/:id')
     adminController.deleteCourse
   );
 
-// Section Management Routes
 router.route('/sections')
   .post(
     auth.checkUserAuthentication,
@@ -115,7 +105,6 @@ router.route('/sections/:id')
     adminController.deleteSection
   );
 
-// Update section-specific course schedule
 router.route('/sections/:sectionId/courses/:courseId/schedule')
   .put(
     auth.checkUserAuthentication,
@@ -123,7 +112,6 @@ router.route('/sections/:sectionId/courses/:courseId/schedule')
     adminController.updateSectionCourseSchedule
   );
 
-// User Management (Admin Dashboard)
 router.route('/user-management/overview')
   .get(
     auth.checkUserAuthentication,
@@ -176,7 +164,6 @@ router.route('/user-management/teachers/:id')
     adminController.deleteTeacherByAdmin
   );
 
-// System Settings Routes
 router.route('/system-settings')
   .get(
     auth.checkUserAuthentication,
@@ -189,7 +176,6 @@ router.route('/system-settings')
     adminController.updateSystemSettings
   );
 
-// get single admin details
 router.route('/:id')
   .get(
     auth.checkUserAuthentication,

@@ -79,12 +79,9 @@ const sectionSchema = new mongoose.Schema(
       enum: ['active', 'inactive'],
       default: 'active',
     },
-    // Section-specific course schedules
-    // Maps courseId to schedule for this section
     courseSchedules: {
       type: Map,
       of: {
-        // New structure: per-day schedules
         daySchedules: [{
           day: {
             type: String,
@@ -107,7 +104,6 @@ const sectionSchema = new mongoose.Schema(
             default: '',
           },
         }],
-        // Legacy fields for backward compatibility
         days: [{
           type: String,
           enum: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -130,17 +126,14 @@ const sectionSchema = new mongoose.Schema(
 );
 
 sectionSchema.pre('save', function (next) {
-  // Set regularStudents to enrolledStudents if not explicitly set
   if (this.regularStudents === undefined || this.regularStudents === null) {
     this.regularStudents = Number(this.enrolledStudents || 0);
   }
 
-  // Calculate totalCapacity from regularStudents + maxIrregularStudents
   const regular = Number(this.regularStudents || 0);
   const maxIrregular = Number(this.maxIrregularStudents || 0);
   this.totalCapacity = regular + maxIrregular;
 
-  // Validate totalCapacity
   if (this.totalCapacity < 1 || this.totalCapacity > 50) {
     return next(
       new Error(

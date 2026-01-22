@@ -6,11 +6,9 @@ const Section = require('../models/sectionModel');
 const ErrorHandler = require('../utils/ErrorHandler');
 const catchAsyncError = require('../middleware/CatchAsyncErrors');
 
-// Student: Get my advisor information
 exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
 
-  // Validate studentId
   if (!studentId || !mongoose.Types.ObjectId.isValid(studentId)) {
     return next(new ErrorHandler('Invalid student ID', 400));
   }
@@ -24,16 +22,13 @@ exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Student section not found', 404));
   }
 
-  // Normalize section name to uppercase for matching (since sectionName is stored in uppercase)
   const normalizedSectionName = student.section ? student.section.trim().toUpperCase() : null;
 
-  // Find the section - use simple exact match first (both should be uppercase)
   let section = await Section.findOne({
     sectionName: normalizedSectionName,
     status: 'active',
   });
 
-  // If not found, try case-insensitive search
   if (!section) {
     section = await Section.findOne({
       sectionName: { $regex: new RegExp(`^${normalizedSectionName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -41,7 +36,6 @@ exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
     });
   }
 
-  // If still not found, return error
   if (!section) {
     return next(new ErrorHandler(`Section "${normalizedSectionName}" not found or inactive`, 404));
   }
@@ -52,12 +46,10 @@ exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
 
   const advisorTeacherId = section.assignedAdvisor.trim();
 
-  // Get advisor details - try to find by teacherId
   let advisor = await Teacher.findOne({
     teacherId: advisorTeacherId,
   }).select('teacherId name email mobileNumber');
 
-  // If not found, try case-insensitive search
   if (!advisor) {
     advisor = await Teacher.findOne({
       teacherId: { $regex: new RegExp(`^${advisorTeacherId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
@@ -86,7 +78,6 @@ exports.getMyAdvisor = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Student: Book advisor appointment
 exports.bookAppointment = catchAsyncError(async (req, res, next) => {
   const { appointmentDate, appointmentTime, reason } = req.body;
   const studentId = req.student._id;
@@ -107,13 +98,11 @@ exports.bookAppointment = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Reason cannot exceed 500 characters', 400));
   }
 
-  // Get student's advisor
   const student = await Student.findById(studentId).select('section');
   if (!student || !student.section) {
     return next(new ErrorHandler('Student section not found', 404));
   }
 
-  // Normalize section name to uppercase for matching
   const normalizedSectionName = student.section ? student.section.trim().toUpperCase() : null;
   const section = await Section.findOne({
     $or: [
@@ -135,7 +124,6 @@ exports.bookAppointment = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Advisor not found', 404));
   }
 
-  // Check if appointment slot is already taken
   const existingAppointment = await AdvisorAppointment.findOne({
     advisor: advisor._id,
     appointmentDate: new Date(appointmentDate),
@@ -147,7 +135,6 @@ exports.bookAppointment = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('This appointment slot is already booked', 400));
   }
 
-  // Create appointment
   const appointment = await AdvisorAppointment.create({
     student: studentId,
     advisor: advisor._id,
@@ -167,7 +154,6 @@ exports.bookAppointment = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Student: Get my appointments
 exports.getMyAppointments = catchAsyncError(async (req, res, next) => {
   const studentId = req.student._id;
 
@@ -182,7 +168,6 @@ exports.getMyAppointments = catchAsyncError(async (req, res, next) => {
     .sort({ appointmentDate: -1, appointmentTime: -1 })
     .lean();
 
-  // Filter out appointments with invalid advisor references
   const validAppointments = appointments.filter(apt => apt.advisor !== null);
 
   res.status(200).json({
@@ -192,7 +177,6 @@ exports.getMyAppointments = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Advisor: Get my appointments
 exports.getAdvisorAppointments = catchAsyncError(async (req, res, next) => {
   const teacherId = req.teacher._id;
 
@@ -209,7 +193,6 @@ exports.getAdvisorAppointments = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Advisor: Approve appointment
 exports.approveAppointment = catchAsyncError(async (req, res, next) => {
   const { appointmentId } = req.params;
   const teacherId = req.teacher._id;
@@ -242,7 +225,6 @@ exports.approveAppointment = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Advisor: Reject appointment
 exports.rejectAppointment = catchAsyncError(async (req, res, next) => {
   const { appointmentId } = req.params;
   const { advisorFeedback } = req.body;

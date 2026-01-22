@@ -40,7 +40,6 @@ exports.loginAdmin = catchAsyncError(async(req, res, next) => {
     return next(new ErrorHandler('Missing fields', 400));
   }
 
-  // Find an admin by email and explicitly include the password field in the query result
   const admin = await Admin.findOne({ email }).select('+password');
   if(!admin){
     return next(new ErrorHandler('Invalid email or password', 401));
@@ -93,7 +92,6 @@ exports.updateAdminPrivilege = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('User not found', 400));
   }
   
-  // Check if at least one field is provided
   if (!name && !email && !privilege && adminId === undefined) {
     return next(new ErrorHandler('Invalid: no data provided', 400));
   }
@@ -103,29 +101,24 @@ exports.updateAdminPrivilege = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('User not found', 200));
   }
   
-  // Prevent self-modification of privilege
   if (privilege && admin.email === req.user.email) {
     return next(new ErrorHandler('Self-privilege modification is not allowed.', 400));
   }
   
-  // Validate privilege if provided
   if (privilege && !['Super Admin', 'Admin'].includes(privilege)) {
     return next(new ErrorHandler('Invalid: privilege must be either "Super Admin" or "Admin"', 400));
   }
   
-  // Validate email format if provided
   if (email) {
     if (!validator.isEmail(email)) {
       return next(new ErrorHandler('Invalid: please provide a valid email', 400));
     }
-    // Check if email is already taken by another admin
     const existingAdmin = await Admin.findOne({ email, _id: { $ne: req.params.id } });
     if (existingAdmin) {
       return next(new ErrorHandler('Invalid: email already exists', 400));
     }
   }
 
-  // Check if adminId is already taken by another admin (if provided and not empty)
   if (adminId !== undefined && adminId !== null && adminId !== '') {
     const existingAdminWithId = await Admin.findOne({ adminId, _id: { $ne: req.params.id } });
     if (existingAdminWithId) {
@@ -133,11 +126,10 @@ exports.updateAdminPrivilege = catchAsyncError(async (req, res, next) => {
     }
   }
   
-  // Update fields if provided
   if (name) admin.name = name;
   if (email) admin.email = email;
   if (privilege) admin.privilege = privilege;
-  if (adminId !== undefined) admin.adminId = adminId || undefined; // Allow clearing adminId by setting to empty string
+  if (adminId !== undefined) admin.adminId = adminId || undefined;
   
   await admin.save();
   
@@ -172,27 +164,22 @@ exports.deleteAdmin = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Add a new course
 exports.addCourse = catchAsyncError(async (req, res, next) => {
   const { courseCode, courseName, credits, department, prerequisite, semester, instructors, instructorSections } = req.body;
 
-  // Validate required fields
   if (!courseCode || !courseName || !credits || !department || !semester) {
     return next(new ErrorHandler('Missing required fields', 400));
   }
 
-  // Check if course code already exists
   const existingCourse = await Course.findOne({ courseCode: courseCode.toUpperCase() });
   if (existingCourse) {
     return next(new ErrorHandler('Course code already exists', 400));
   }
 
-  // Normalize instructors
   const normalizedInstructors = Array.isArray(instructors)
     ? instructors.filter(Boolean).map((id) => id.toString().trim())
     : [];
 
-  // Normalize and validate instructorSections mapping
   let normalizedInstructorSections = [];
   if (Array.isArray(instructorSections)) {
     for (const item of instructorSections) {
@@ -201,7 +188,6 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
           ? item.sections.filter(Boolean).map((s) => s.toString().trim())
           : [];
         
-        // Verify each section exists and matches the course semester
         if (sectionNames.length > 0) {
           const sectionsToVerify = await Section.find({
             sectionName: { $in: sectionNames },
@@ -235,7 +221,6 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
     }
   }
 
-  // Create new course
   const course = await Course.create({
     courseCode: courseCode.toUpperCase(),
     courseName,
@@ -266,14 +251,11 @@ exports.addCourse = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get all courses with optional search and filter
 exports.getCourses = catchAsyncError(async (req, res, next) => {
   const { search, department, status, semester } = req.query;
 
-  // Build query
   const query = {};
 
-  // Search by course code or name
   if (search) {
     query.$or = [
       { courseCode: { $regex: search, $options: 'i' } },
@@ -281,17 +263,14 @@ exports.getCourses = catchAsyncError(async (req, res, next) => {
     ];
   }
 
-  // Filter by department
   if (department && department !== 'All Departments') {
     query.department = department;
   }
 
-  // Filter by status
   if (status) {
     query.status = status;
   }
 
-  // Filter by semester
   if (semester) {
     query.semester = semester;
   }
@@ -319,7 +298,6 @@ exports.getCourses = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get single course by ID
 exports.getSingleCourse = catchAsyncError(async (req, res, next) => {
   if (!req.params.id) {
     return next(new ErrorHandler('Course ID is required', 400));
@@ -349,7 +327,6 @@ exports.getSingleCourse = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Update course
 exports.updateCourse = catchAsyncError(async (req, res, next) => {
   const { id } = req.params;
   if (!id) {
@@ -435,7 +412,6 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
       return next(new ErrorHandler('Invalid instructorSections value', 400));
     }
     
-    // Validate that assigned sections match the course's semester
     const courseSemester = semester || course.semester;
     const filteredInstructorSections = [];
     
@@ -445,7 +421,6 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
           ? item.sections.filter(Boolean).map((s) => s.toString().trim())
           : [];
         
-        // Verify each section exists and matches the course semester
         if (sectionNames.length > 0) {
           const sectionsToVerify = await Section.find({
             sectionName: { $in: sectionNames },
@@ -500,13 +475,11 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     
     const allowedDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     
-    // Handle new daySchedules structure (per-day scheduling)
     if (schedule.daySchedules !== undefined) {
       if (!Array.isArray(schedule.daySchedules)) {
         return next(new ErrorHandler('Schedule daySchedules must be an array', 400));
       }
       
-      // Validate and set daySchedules
       const validatedDaySchedules = schedule.daySchedules
         .filter(item => item && item.day && allowedDays.includes(item.day))
         .map(item => ({
@@ -517,9 +490,7 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
       
       course.schedule.daySchedules = validatedDaySchedules;
       
-      // Also update legacy fields for backward compatibility
       course.schedule.days = validatedDaySchedules.map(item => item.day);
-      // Use first day's time for legacy fields (or empty if no schedules)
       if (validatedDaySchedules.length > 0) {
         course.schedule.startTime = validatedDaySchedules[0].startTime || '';
         course.schedule.endTime = validatedDaySchedules[0].endTime || '';
@@ -528,7 +499,6 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
         course.schedule.endTime = '';
       }
     } else {
-      // Handle legacy structure (single time for all days)
       if (schedule.days !== undefined) {
         if (!Array.isArray(schedule.days)) {
           return next(new ErrorHandler('Schedule days must be an array', 400));
@@ -539,7 +509,6 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
         }
         course.schedule.days = schedule.days;
         
-        // Convert legacy structure to new daySchedules format
         const startTime = (schedule.startTime || '').toString().trim();
         const endTime = (schedule.endTime || '').toString().trim();
         course.schedule.daySchedules = schedule.days.map(day => ({
@@ -551,7 +520,6 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
       
       if (schedule.startTime !== undefined) {
         course.schedule.startTime = schedule.startTime.toString().trim();
-        // Update daySchedules if they exist
         if (course.schedule.daySchedules && course.schedule.daySchedules.length > 0) {
           course.schedule.daySchedules.forEach(item => {
             item.startTime = course.schedule.startTime;
@@ -561,7 +529,6 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
       
       if (schedule.endTime !== undefined) {
         course.schedule.endTime = schedule.endTime.toString().trim();
-        // Update daySchedules if they exist
         if (course.schedule.daySchedules && course.schedule.daySchedules.length > 0) {
           course.schedule.daySchedules.forEach(item => {
             item.endTime = course.schedule.endTime;
@@ -577,9 +544,8 @@ exports.updateCourse = catchAsyncError(async (req, res, next) => {
     success: true,
     message: 'Course updated successfully'
   });
-});
+  });
  
-// Delete course
 exports.deleteCourse = catchAsyncError(async (req, res, next) => {
   if (!req.params.id) {
     return next(new ErrorHandler('Course ID is required', 400));
@@ -590,7 +556,6 @@ exports.deleteCourse = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Course not found', 404));
   }
 
-  // Check if course has enrolled students
   if (course.enrolledStudents && course.enrolledStudents.length > 0) {
     return next(new ErrorHandler('Cannot delete course with enrolled students', 400));
   }
@@ -603,7 +568,6 @@ exports.deleteCourse = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Section Management
 exports.createSection = catchAsyncError(async (req, res, next) => {
   const {
     sectionName, semester, shift, assignedAdvisor, regularStudents, maxIrregularStudents, enrolledStudents, crName, crContact, acrName, acrContact, status,
@@ -619,7 +583,6 @@ exports.createSection = catchAsyncError(async (req, res, next) => {
 
   const formattedSectionName = sectionName.trim().toUpperCase();
   
-  // Set regularStudents to enrolledStudents if not provided
   let regularStudentsValue = regularStudents !== undefined ? Number(regularStudents) : (enrolledStudents !== undefined ? Number(enrolledStudents) : 0);
   if (Number.isNaN(regularStudentsValue) || regularStudentsValue < 0) {
     return next(new ErrorHandler('Invalid regular students value', 400));
@@ -630,7 +593,6 @@ exports.createSection = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Invalid maximum irregular students value', 400));
   }
 
-  // Calculate totalCapacity
   const capacityValue = regularStudentsValue + maxIrregularStudentsValue;
   if (capacityValue < 1 || capacityValue > 50) {
     return next(new ErrorHandler('Total capacity must be between 1 and 50', 400));
@@ -688,10 +650,8 @@ exports.createSection = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Helper function to infer shift from section name
 const inferShiftFromSectionName = (sectionName) => {
   const nameUpper = sectionName.toUpperCase();
-  // Common patterns: E = Evening, M = Morning, G = Morning (in some systems)
   if (nameUpper.includes('E') || nameUpper.endsWith('E')) {
     return 'Evening';
   }
@@ -701,14 +661,11 @@ const inferShiftFromSectionName = (sectionName) => {
   if (nameUpper.includes('G')) {
     return 'Morning';
   }
-  // Default to Morning
   return 'Morning';
 };
 
-// Populate sections from student data
 exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) => {
   try {
-    // Get all students with section information
     const students = await Student.find({ section: { $exists: true, $ne: null, $ne: '' } });
     
     if (students.length === 0) {
@@ -723,8 +680,7 @@ exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) =>
       });
     }
 
-    // Get distinct sections from student data and track student IDs per section
-    const sectionDataMap = new Map(); // Map sectionName -> { studentIds: [], count: 0 }
+    const sectionDataMap = new Map();
     students.forEach((student) => {
       if (student.section) {
         const sectionName = student.section.trim().toUpperCase();
@@ -739,17 +695,14 @@ exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) =>
       }
     });
 
-    // Get existing sections
     const existingSections = await Section.find({});
     const existingSectionNames = new Set(
       existingSections.map((s) => s.sectionName.toUpperCase())
     );
 
-    // Get first available advisor as default (or use placeholder)
     const advisors = await Teacher.find({ privilege: 'Advisor' }).limit(1);
     const defaultAdvisor = advisors.length > 0 ? advisors[0].teacherId : 'TBD';
 
-    // Create sections for distinct section names that don't exist
     const createdSections = [];
     const skippedSections = [];
     let createdCount = 0;
@@ -770,13 +723,10 @@ exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) =>
       }
 
       try {
-        // Extract semester from course registrations
-        // Get course registrations for students in this section
         const registrations = await CourseRegistration.find({
           student: { $in: studentIds }
         }).populate('course', 'semester');
 
-        // Count semesters from course registrations
         const semesterCountMap = new Map();
         registrations.forEach((reg) => {
           if (reg.semester) {
@@ -786,7 +736,6 @@ exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) =>
           }
         });
 
-        // Get the most common semester
         let inferredSemester = 'Unknown';
         if (semesterCountMap.size > 0) {
           let maxCount = 0;
@@ -798,12 +747,8 @@ exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) =>
           }
         }
 
-        // Infer shift from section name
         const inferredShift = inferShiftFromSectionName(sectionName);
 
-        // Calculate capacity: cap at 50, ensure enrolledStudents fits
-        // If studentCount > 50, set regularStudents to 50 and maxIrregularStudents to 0
-        // Otherwise, set regularStudents to studentCount and allow some irregular capacity
         const enrolledStudents = studentCount;
         const regularStudents = Math.min(studentCount, 50);
         const maxIrregularStudents = studentCount > 50 ? 0 : 5; // Allow 5 irregular if under capacity
@@ -834,7 +779,6 @@ exports.populateSectionsFromStudents = catchAsyncError(async (req, res, next) =>
         });
         createdCount++;
       } catch (error) {
-        // If section creation fails (e.g., validation error), skip it
         skippedSections.push({
           sectionName,
           reason: error.message || 'Creation failed',
@@ -929,7 +873,6 @@ exports.getSingleSection = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Section not found', 404));
   }
 
-  // Convert courseSchedules Map to object for JSON response
   const courseSchedulesObj = {};
   if (section.courseSchedules && section.courseSchedules instanceof Map) {
     section.courseSchedules.forEach((schedule, courseId) => {
@@ -1028,7 +971,6 @@ exports.updateSection = catchAsyncError(async (req, res, next) => {
   if (acrContact) section.acrContact = acrContact;
   if (status) section.status = status;
 
-  // Handle regularStudents and maxIrregularStudents
   let regularStudentsValue = section.regularStudents;
   let maxIrregularStudentsValue = section.maxIrregularStudents;
 
@@ -1048,7 +990,6 @@ exports.updateSection = catchAsyncError(async (req, res, next) => {
     section.maxIrregularStudents = maxIrregularStudentsValue;
   }
 
-  // Calculate totalCapacity from regularStudents + maxIrregularStudents
   const capacityValue = regularStudentsValue + maxIrregularStudentsValue;
   if (capacityValue < 1 || capacityValue > 50) {
     return next(new ErrorHandler('Total capacity must be between 1 and 50', 400));
@@ -1074,7 +1015,6 @@ exports.updateSection = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Update section-specific course schedule
 exports.updateSectionCourseSchedule = catchAsyncError(async (req, res, next) => {
   const { sectionId, courseId } = req.params;
   const { schedule } = req.body;
@@ -1088,7 +1028,6 @@ exports.updateSectionCourseSchedule = catchAsyncError(async (req, res, next) => 
     return next(new ErrorHandler('Section not found', 404));
   }
 
-  // Verify course exists
   const Course = require('../models/courseModel');
   const course = await Course.findById(courseId);
   if (!course) {
@@ -1101,7 +1040,6 @@ exports.updateSectionCourseSchedule = catchAsyncError(async (req, res, next) => 
 
   const allowedDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
-  // Handle new daySchedules structure
   if (schedule.daySchedules !== undefined) {
     if (!Array.isArray(schedule.daySchedules)) {
       return next(new ErrorHandler('Schedule daySchedules must be an array', 400));
@@ -1116,22 +1054,18 @@ exports.updateSectionCourseSchedule = catchAsyncError(async (req, res, next) => 
         room: (item.room || '').toString().trim(),
       }));
     
-    // Initialize courseSchedules Map if it doesn't exist
     if (!section.courseSchedules) {
       section.courseSchedules = new Map();
     }
     
-    // Store schedule for this course in this section
     section.courseSchedules.set(courseId, {
       daySchedules: validatedDaySchedules,
-      // Also store legacy fields for backward compatibility
       days: validatedDaySchedules.map(item => item.day),
       startTime: validatedDaySchedules.length > 0 ? validatedDaySchedules[0].startTime : '',
       endTime: validatedDaySchedules.length > 0 ? validatedDaySchedules[0].endTime : '',
       room: validatedDaySchedules.length > 0 ? validatedDaySchedules[0].room : '',
     });
   } else {
-    // Handle legacy structure
     if (schedule.days && Array.isArray(schedule.days)) {
       const invalidDays = schedule.days.filter(day => !allowedDays.includes(day));
       if (invalidDays.length > 0) {
@@ -1151,7 +1085,6 @@ exports.updateSectionCourseSchedule = catchAsyncError(async (req, res, next) => 
         startTime,
         endTime,
         room,
-        // Convert to new format
         daySchedules: schedule.days.map(day => ({
           day,
           startTime,
@@ -1241,7 +1174,6 @@ const applyUpdates = (document, updates) => {
   });
 };
 
-// User Management
 exports.getUserManagementOverview = catchAsyncError(async (req, res) => {
   const [students, teachers] = await Promise.all([
     Student.find(),
@@ -1280,7 +1212,6 @@ exports.getAllTeachersForAdmin = catchAsyncError(async (req, res) => {
   });
 });
 
-// Get all advisors (teachers with privilege='Advisor')
 exports.getAllAdvisors = catchAsyncError(async (req, res) => {
   const advisors = await Teacher.find({ privilege: 'Advisor' });
   res.status(200).json({
@@ -1336,7 +1267,6 @@ exports.updateTeacherByAdmin = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler('Teacher not found', 404));
   }
 
-  // Validate privilege if provided
   if (req.body.privilege !== undefined) {
     const allowedPrivileges = ['Teacher', 'Advisor'];
     if (!allowedPrivileges.includes(req.body.privilege)) {
@@ -1345,7 +1275,6 @@ exports.updateTeacherByAdmin = catchAsyncError(async (req, res, next) => {
     teacher.privilege = req.body.privilege;
   }
 
-  // Apply other updates (excluding privilege as it's already handled above)
   const updates = { ...req.body };
   delete updates.privilege;
   applyUpdates(teacher, updates);
@@ -1403,7 +1332,6 @@ exports.deleteTeacherByAdmin = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// CSV Upload for Student Creation (Super Admin and Admin)
 exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
   if (!req.file) {
     return next(new ErrorHandler('No CSV file uploaded', 400));
@@ -1417,7 +1345,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
   const errors = [];
   const created = [];
   const skipped = [];
-  // Track sections touched by this CSV so we can auto-manage section records
   const sectionStats = {};
 
   return new Promise((resolve, reject) => {
@@ -1428,12 +1355,8 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
       })
       .on('end', async () => {
         try {
-          // Process each row
           for (const row of results) {
             try {
-              // Extract data from CSV row
-              // CSV format: SL, Session, Department, Semester, Section, Student Id, Student Name, Email, Password
-              // Handle column names with spaces - csv-parser preserves them as-is
               const studentId = (row['Student Id'] || row['StudentId'] || row['student id'] || row['studentid'] || '').trim();
               const studentName = (row['Student Name'] || row['StudentName'] || row['student name'] || row['studentname'] || '').trim();
               const email = (row['Email'] || row['email'] || '').trim();
@@ -1447,7 +1370,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                   ? sectionRaw.trim().toUpperCase()
                   : '';
 
-              // Validate required fields
               if (!studentName || !studentId || !email || !password) {
                 errors.push({
                   row: row,
@@ -1456,7 +1378,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Validate email format
               if (!validator.isEmail(email)) {
                 errors.push({
                   row: row,
@@ -1465,12 +1386,10 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Check if student already exists (by studentId or email)
               const existingStudentById = await Student.findOne({ studentId });
               const existingStudentByEmail = await Student.findOne({ email });
               
               if (existingStudentById || existingStudentByEmail) {
-                // Update existing student's section if provided
                 const existingStudent = existingStudentById || existingStudentByEmail;
                 if (section) {
                   existingStudent.section = section;
@@ -1480,7 +1399,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                     email: email,
                     reason: 'Student already exists - section updated'
                   });
-                  // Count this student towards the section
                   if (section) {
                     if (!sectionStats[section]) {
                       sectionStats[section] = {
@@ -1500,7 +1418,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Create student
               const student = await Student.create({
                 name: studentName,
                 studentId: studentId,
@@ -1519,7 +1436,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                 section: student.section
               });
 
-              // Track section enrollment for dynamic section management
               if (section) {
                 if (!sectionStats[section]) {
                   sectionStats[section] = {
@@ -1538,10 +1454,8 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
             }
           }
 
-          // Helper function to infer shift from section name
           const inferShiftFromSectionName = (sectionName) => {
             const nameUpper = sectionName.toUpperCase();
-            // Common patterns: E = Evening, M = Morning, G = Morning (in some systems)
             if (nameUpper.includes('E') || nameUpper.endsWith('E')) {
               return 'Evening';
             }
@@ -1551,33 +1465,25 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
             if (nameUpper.includes('G')) {
               return 'Morning';
             }
-            // Default to Morning
             return 'Morning';
           };
 
-          // After processing students, ensure sections exist and enrollment is updated
           const sectionNames = Object.keys(sectionStats);
           for (const sectionName of sectionNames) {
             try {
               const stats = sectionStats[sectionName];
-              // Re-count from database to ensure accuracy
               const enrolledCount = await Student.countDocuments({
                 section: sectionName,
               });
 
               let sectionDoc = await Section.findOne({ sectionName });
               if (!sectionDoc) {
-                // Infer shift from section name
                 const inferredShift = inferShiftFromSectionName(sectionName);
                 
-                // Calculate capacity: cap at 50, ensure enrolledStudents fits
-                // If enrolledCount > 50, set regularStudents to 50 and maxIrregularStudents to 0
-                // Otherwise, set regularStudents to enrolledCount and allow some irregular capacity
                 const regularStudents = Math.min(enrolledCount, 50);
                 const maxIrregularStudents = enrolledCount > 50 ? 0 : 5; // Allow 5 irregular if under capacity
                 const totalCapacity = regularStudents + maxIrregularStudents;
 
-                // Create a new section with data from CSV
                 sectionDoc = await Section.create({
                   sectionName,
                   semester: stats.semester || 'Unknown',
@@ -1594,29 +1500,23 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
                   status: 'active',
                 });
               } else {
-                // Update existing section's enrolledStudents and ensure capacity
                 const currentEnrolled = sectionDoc.enrolledStudents || 0;
                 const newEnrolled = enrolledCount;
                 
-                // Update enrolled students
                 sectionDoc.enrolledStudents = newEnrolled;
                 
-                // If enrolled students increased beyond capacity, adjust capacity
                 if (newEnrolled > sectionDoc.totalCapacity) {
                   const regularStudents = Math.min(newEnrolled, 50);
                   const maxIrregularStudents = newEnrolled > 50 ? 0 : Math.max(5, sectionDoc.maxIrregularStudents || 0);
                   sectionDoc.regularStudents = regularStudents;
                   sectionDoc.maxIrregularStudents = maxIrregularStudents;
-                  // totalCapacity will be recalculated by pre-save hook
                 } else if (newEnrolled > (sectionDoc.regularStudents || 0)) {
-                  // Ensure regularStudents is at least equal to enrolledStudents
                   sectionDoc.regularStudents = Math.min(newEnrolled, 50);
                 }
                 
                 await sectionDoc.save();
               }
             } catch (sectionError) {
-              // Don't fail the whole CSV because of a single section issue
               errors.push({
                 sectionName,
                 error:
@@ -1626,7 +1526,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
             }
           }
 
-          // Clean up uploaded file
           fs.unlinkSync(filePath);
 
           res.status(200).json({
@@ -1640,7 +1539,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
           });
           resolve();
         } catch (error) {
-          // Clean up uploaded file on error
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
           }
@@ -1648,7 +1546,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
         }
       })
       .on('error', (error) => {
-        // Clean up uploaded file on error
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
@@ -1657,7 +1554,6 @@ exports.uploadStudentCSV = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// CSV Upload for Admin Creation (Super Admin only)
 exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
   if (!req.file) {
     return next(new ErrorHandler('No CSV file uploaded', 400));
@@ -1680,20 +1576,14 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
       })
       .on('end', async () => {
         try {
-          // Process each row
           for (const row of results) {
             try {
-              // Extract data from CSV row
-              // CSV format: SL, Department, Admin Id, Admin Name, Email, Password
-              // Handle column names with spaces - csv-parser preserves them as-is
-              // Also handle variations (with/without spaces, different cases)
               const adminId = row['Admin Id'] || row['AdminId'] || row['admin id'] || row['adminid'] || '';
               const adminName = row['Admin Name'] || row['AdminName'] || row['admin name'] || row['adminname'] || '';
               const email = (row['Email'] || row['email'] || '').trim();
               const password = (row['Password'] || row['password'] || '').trim();
               const department = row['Department'] || row['department'] || '';
 
-              // Validate required fields
               if (!adminName || !email || !password) {
                 errors.push({
                   row: row,
@@ -1702,7 +1592,6 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Validate email format
               if (!validator.isEmail(email)) {
                 errors.push({
                   row: row,
@@ -1711,7 +1600,6 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Check if admin already exists
               const existingAdmin = await Admin.findOne({ email });
               if (existingAdmin) {
                 skipped.push({
@@ -1721,7 +1609,6 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Create admin with 'Admin' privilege
               const admin = await Admin.create({
                 name: adminName,
                 adminId: adminId || undefined,
@@ -1745,7 +1632,6 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
             }
           }
 
-          // Clean up uploaded file
           fs.unlinkSync(filePath);
 
           res.status(200).json({
@@ -1759,7 +1645,6 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
           });
           resolve();
         } catch (error) {
-          // Clean up uploaded file on error
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
           }
@@ -1767,7 +1652,6 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
         }
       })
       .on('error', (error) => {
-        // Clean up uploaded file on error
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
@@ -1776,7 +1660,6 @@ exports.uploadAdminCSV = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// CSV Upload for Teacher Creation (Super Admin only)
 exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
   if (!req.file) {
     return next(new ErrorHandler('No CSV file uploaded', 400));
@@ -1799,13 +1682,8 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
       })
       .on('end', async () => {
         try {
-          // Process each row
           for (const row of results) {
             try {
-              // Extract data from CSV row
-              // CSV format: SL, Department, Teacher Id, Teacher Name, Designation, Email, Contact, Password
-              // Handle column names with spaces - csv-parser preserves them as-is
-              // Also handle variations (with/without spaces, different cases)
               const teacherId = (row['Teacher Id'] || row['TeacherId'] || row['teacher id'] || row['teacherid'] || '').trim();
               const teacherName = (row['Teacher Name'] || row['TeacherName'] || row['teacher name'] || row['teachername'] || '').trim();
               const email = (row['Email'] || row['email'] || '').trim();
@@ -1814,7 +1692,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
               const designation = (row['Designation'] || row['designation'] || '').trim();
               const contact = (row['Contact'] || row['contact'] || '').trim();
 
-              // Validate required fields
               if (!teacherName || !email || !password) {
                 errors.push({
                   row: row,
@@ -1823,7 +1700,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Validate email format
               if (!validator.isEmail(email)) {
                 errors.push({
                   row: row,
@@ -1832,7 +1708,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Check if teacher already exists (by teacherId or email)
               const existingTeacherById = teacherId ? await Teacher.findOne({ teacherId }) : null;
               const existingTeacherByEmail = await Teacher.findOne({ email });
               
@@ -1845,7 +1720,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
                 continue;
               }
 
-              // Create teacher
               const teacher = await Teacher.create({
                 name: teacherName,
                 teacherId: teacherId || undefined,
@@ -1872,7 +1746,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
             }
           }
 
-          // Clean up uploaded file
           fs.unlinkSync(filePath);
 
           res.status(200).json({
@@ -1886,7 +1759,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
           });
           resolve();
         } catch (error) {
-          // Clean up uploaded file on error
           if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
           }
@@ -1894,7 +1766,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
         }
       })
       .on('error', (error) => {
-        // Clean up uploaded file on error
         if (fs.existsSync(filePath)) {
           fs.unlinkSync(filePath);
         }
@@ -1903,7 +1774,6 @@ exports.uploadTeacherCSV = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Get system settings
 exports.getSystemSettings = catchAsyncError(async (req, res, next) => {
   const settings = await SystemSettings.getSettings();
   
@@ -1920,7 +1790,6 @@ exports.getSystemSettings = catchAsyncError(async (req, res, next) => {
   });
 });
 
-// Update system settings
 exports.updateSystemSettings = catchAsyncError(async (req, res, next) => {
   const { 
     registrationPeriod, 
@@ -1932,7 +1801,6 @@ exports.updateSystemSettings = catchAsyncError(async (req, res, next) => {
   
   const settings = await SystemSettings.getSettings();
   
-  // Update registration period if provided
   if (registrationPeriod !== undefined) {
     if (registrationPeriod.startDate !== undefined) {
       settings.registrationPeriod.startDate = registrationPeriod.startDate;
@@ -1944,7 +1812,6 @@ exports.updateSystemSettings = catchAsyncError(async (req, res, next) => {
       settings.registrationPeriod.enabled = registrationPeriod.enabled;
     }
     
-    // Validate that startDate is before endDate if both are set
     if (settings.registrationPeriod.startDate && settings.registrationPeriod.endDate) {
       if (new Date(settings.registrationPeriod.startDate) >= new Date(settings.registrationPeriod.endDate)) {
         return next(new ErrorHandler('Registration start date must be before end date', 400));
@@ -1952,7 +1819,6 @@ exports.updateSystemSettings = catchAsyncError(async (req, res, next) => {
     }
   }
   
-  // Update general settings if provided
   if (universityName !== undefined) {
     settings.universityName = universityName;
   }
