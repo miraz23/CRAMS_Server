@@ -1,0 +1,704 @@
+{
+  "info": {
+    "_postman_id": "2511e8c5-3065-4fc9-bcfa-f1e7f6eadd7e",
+    "name": "Crams",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "39991008",
+    "_collection_link": "https://go.postman.co/collection/39991008-2511e8c5-3065-4fc9-bcfa-f1e7f6eadd7e?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "Home",
+      "item": [
+        {
+          "name": "Home",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}",
+              "host": [
+                "{{BASE_URL}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin Endpoints",
+      "item": [
+        {
+          "name": "Admin authentication",
+          "item": [
+            {
+              "name": "Super admin login",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"email\": \"superadmin@gmail.com\",\r\n  \"password\": \"superadmin@2025\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/login",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "login"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Super admin logout",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"email\": \"superadmin@gmail.com\",\r\n  \"password\": \"superadmin@2025\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/logout",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "logout"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "CSV uploads",
+          "item": [
+            {
+              "name": "Upload Admin CSV",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "csvFile",
+                      "type": "file",
+                      "uuid": "4073737f-9994-4f8d-ab61-393762d7be57",
+                      "src": "/D:/Documents/Docs/CRAMS/Admin Data.csv"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/upload-csv",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "upload-csv"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Upload Student CSV",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "csvFile",
+                      "type": "file",
+                      "uuid": "4073737f-9994-4f8d-ab61-393762d7be57",
+                      "src": "/D:/Documents/Docs/CRAMS/Student Data.csv"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/upload-student-csv",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "upload-student-csv"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Upload Teacher CSV",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "csvFile",
+                      "type": "file",
+                      "uuid": "4073737f-9994-4f8d-ab61-393762d7be57",
+                      "src": "/D:/Documents/Docs/CRAMS/Teacher Data.csv"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/upload-teacher-csv",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "upload-teacher-csv"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Admin management",
+          "item": [
+            {
+              "name": "Get all admin",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get single admin",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/69103efda4888bb51fcab92f",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "69103efda4888bb51fcab92f"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update admin priviledge",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"privilege\": \"Super Admin\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/697115c057201b3f52500527",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "697115c057201b3f52500527"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete admin",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/697115c057201b3f52500527",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "697115c057201b3f52500527"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Course Management",
+          "item": [
+            {
+              "name": "Add course",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"courseCode\": \"CSE-1101\",\r\n  \"courseName\": \"C Programming\",\r\n  \"credits\": 3,\r\n  \"semester\": 1,\r\n  \"department\": \"Computer Science\",\r\n  \"prerequisites\": [],\r\n  \"instructor\": \"Shahariar Reza\",\r\n  \"section\": \"1EM\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/courses",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "courses"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get all courses",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/courses",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "courses"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update course",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"courseName\": \"C++\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/courses/69711a3657201b3f5250065e",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "courses",
+                    "69711a3657201b3f5250065e"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete course",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"courseName\": \"C++\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/courses/69711a3657201b3f5250065e",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "courses",
+                    "69711a3657201b3f5250065e"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Section Management",
+          "item": [
+            {
+              "name": "Populate section",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/sections/populate-from-students",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "sections",
+                    "populate-from-students"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "All sections",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/sections",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "sections"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Course schedule",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"schedule\": {\r\n    \"days\": [\"Mon\", \"Wed\"],\r\n    \"time\": \"10:40 AM - 11:30 AM\",\r\n    \"room\": \"C-101\"\r\n  }\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{BASE_URL}}/api/admin/sections/69711d0557201b3f52500675/courses/6971198e57201b3f52500656/schedule",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "sections",
+                    "69711d0557201b3f52500675",
+                    "courses",
+                    "6971198e57201b3f52500656",
+                    "schedule"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Student Endpoints",
+      "item": [
+        {
+          "name": "Student login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"studentId\": \"C231197\",\r\n  \"password\": \"crams@2025\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/student/login",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "student",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Select course",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Schedule",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Submit for approval",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/student/courses/submit",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "student",
+                "courses",
+                "submit"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Extra credit",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"courseId\": \"6971198e57201b3f52500656\",\r\n  \"reason\": \"I need this course for my major requirements\",\r\n  \"semester\": 1,\r\n  \"requestedCredits\": 3\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/student/extra-credit-requests",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "student",
+                "extra-credit-requests"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Advisor endpoints",
+      "item": [
+        {
+          "name": "Advisor login",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"email\": \"jamil_cse@iiuc.ac.bd\",\r\n  \"password\": \"crams@2025\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/teacher/login",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "teacher",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Pending reviews",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        },
+        {
+          "name": "Reg approval",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/teacher/advisor/approve/697120ca57201b3f525006bb",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "teacher",
+                "advisor",
+                "approve",
+                "697120ca57201b3f525006bb"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Extra credit approval",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/teacher/advisor/extra-credit-requests/6971220857201b3f525006d1/approve",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "teacher",
+                "advisor",
+                "extra-credit-requests",
+                "6971220857201b3f525006d1",
+                "approve"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Extra credit requests",
+          "request": {
+            "method": "GET",
+            "header": []
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "https://crams-server.vercel.app",
+      "type": "default"
+    }
+  ]
+}
